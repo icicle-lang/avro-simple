@@ -1,0 +1,58 @@
+cabal-version:      1.24
+name:               avro-simple
+version:            0.1.0.0
+homepage:           icicle-lang.github.io
+license:            AllRightsReserved
+author:             Huw Campbell
+maintainer:         huw.campbell@gmail.com
+category:           Codec
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+
+library
+    exposed-modules:
+        Avro
+        Avro.Codec
+        Avro.Schema
+        Avro.Name
+        Avro.Value
+
+    other-modules:
+        Avro.Internal.Bytes
+        Avro.Internal.Deconflict
+        Avro.Internal.DList
+        Avro.Internal.ReadSchema
+        Avro.Internal.VarInt
+        Avro.Internal.ZigZag
+
+    build-depends:
+        base >=4.14 && <4.15,
+        aeson,
+        binary,
+        bytestring,
+        containers,
+        invariant,
+        profunctors,
+        text,
+        vector
+
+    hs-source-dirs:   src
+    default-language: Haskell98
+    ghc-options: -Wall
+
+test-suite avro-simple-test
+    default-language: Haskell98
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    build-depends:
+        base >=4.14 && <4.15,
+        avro-simple,
+        aeson,
+        binary,
+        containers,
+        invariant,
+        neat-interpolation,
+        profunctors,
+        text,
+        hedgehog
