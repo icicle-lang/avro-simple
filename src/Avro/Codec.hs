@@ -428,7 +428,7 @@ union5 a b c d e =
 This can be used with [`emap`](Avro-Codec#emap) to map to a custom type.
 
 -}
-enum :: TypeName -> [String] -> Codec Int
+enum :: TypeName -> [Text] -> Codec Int
 enum name symbols =
     let
         schema =

@@ -2,6 +2,8 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE CPP #-}
 module Avro.Schema
     ( Schema(..)
     , Field (..)
@@ -17,13 +19,21 @@ import qualified Avro.Value as Avro
 
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson
+
+#if MIN_VERSION_aeson(2,0,0)
 import qualified Data.Aeson.KeyMap as KeyMap
+import           Data.Aeson.Key (Key)
 import qualified Data.Aeson.Key as Key
+#else
+import qualified Data.HashMap.Lazy as KeyMap
+#endif
 
 import           Data.Bifunctor (bimap)
+import           Data.Foldable (asum)
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified Data.Map as Map
+import qualified Data.Scientific as Scientific
 import           Data.String (IsString(..))
 import qualified Data.Text as Text
 import           Data.Text (Text)
@@ -69,7 +79,7 @@ data Schema
     | Map Schema
     | NamedType TypeName
     | Record TypeName [TypeName] (Maybe String) [Field]
-    | Enum TypeName [TypeName] (Maybe String) [String] (Maybe String)
+    | Enum TypeName [TypeName] (Maybe String) [Text] (Maybe Text)
     | Union [Schema]
     | Fixed TypeName [TypeName] Int (Maybe String)
     deriving (Eq, Ord, Show)
@@ -137,22 +147,33 @@ data SchemaMismatch
     | MissingField TypeName Text
     | FieldMismatch TypeName String SchemaMismatch
     | MissingUnion TypeName
-    | MissingSymbol String
+    | MissingSymbol Text
     | NamedTypeUnresolved TypeName
     deriving (Eq, Ord, Show)
 
 
 
 
---
--- JSON codecs
---
--- This isn't written very idiomatically for Aeson, and
--- is a more direct port of the Elm value level code.
---
+------------------------------------------------------------
+--                                                        --
+-- JSON codecs                                            --
+--                                                        --
+-- This isn't written very idiomatically for Aeson, and   --
+-- is a more direct port of the Elm value level code.     --
+--                                                        --
+-- The main issue is that we can't decode Values without  --
+-- a Schema, so it's all a bit tricky with type classes.  --
+--                                                        --
+------------------------------------------------------------
 
+keyFromText :: Text -> Key
 
-
+#if MIN_VERSION_aeson(2,0,0)
+keyFromText = Key.fromText
+#else
+keyFromText = id
+type Key = Text
+#endif
 
 index :: Int -> [a] -> Maybe a
 index i xs =
@@ -181,6 +202,21 @@ encodeDefaultValue schema v =
         _ ->
             encodeValue schema v
 
+
+decodeDefaultValue :: Schema -> Aeson.Value -> Aeson.Parser Avro.Value
+decodeDefaultValue schema json =
+    case schema of
+        Union options ->
+            case options of
+                s : _ ->
+                    Avro.Union 0 <$>
+                        decodeValue s json
+
+                _ ->
+                    fail "Empty union schema, can't decode default value"
+
+        _ ->
+            decodeValue schema json
 
 
 encodeValue :: Schema -> Avro.Value -> Aeson.Value
@@ -214,7 +250,7 @@ encodeValue schema v =
             encodeList (encodeValue items) ls
 
         ( Map values, Avro.Map ls ) ->
-            encodeDict Key.fromText (encodeValue values) ls
+            encodeDict keyFromText (encodeValue values) ls
 
         ( Union _, Avro.Union _ Avro.Null ) ->
             Aeson.Null
@@ -223,7 +259,7 @@ encodeValue schema v =
             case index ix options of
                 Just s ->
                     Aeson.object
-                        [ ( Key.fromText (Name.baseName (typeName s)), encodeValue s ls ) ]
+                        [ ( keyFromText (Name.baseName (typeName s)), encodeValue s ls ) ]
 
                 Nothing ->
                     Aeson.Null
@@ -231,16 +267,16 @@ encodeValue schema v =
         ( Record _ _ _ fields , Avro.Record ls ) ->
             Aeson.object $
                 List.zipWith
-                    (\f i -> ( Key.fromText (fieldName f), encodeValue (fieldType f) i ))
+                    (\f i -> ( keyFromText (fieldName f), encodeValue (fieldType f) i ))
                     fields
                     ls
 
 
-        ( Bytes _, Avro.Bytes bytes ) ->
+        ( Bytes _, Avro.Bytes _bytes ) ->
             -- TODO encodeBytes bytes
             Aeson.Null
 
-        ( Fixed {}, Avro.Fixed bytes ) ->
+        ( Fixed {}, Avro.Fixed _bytes ) ->
             -- encodeBytes bytes
             Aeson.Null
 
@@ -248,6 +284,174 @@ encodeValue schema v =
             Aeson.Null
 
 
+
+decodeValue :: Schema -> Aeson.Value -> Aeson.Parser Avro.Value
+decodeValue schema obj =
+    case schema of
+        Null ->
+            case obj of
+                Aeson.Null ->
+                    pure Avro.Null
+
+                _ ->
+                    fail "Null value expected"
+
+        Boolean ->
+            case obj of
+                Aeson.Bool b ->
+                    pure (Avro.Boolean b)
+
+                _ ->
+                    fail "Boolean value expected"
+
+        Int _ ->
+            case obj of
+                Aeson.Number s
+                    | Just i <- Scientific.toBoundedInteger s
+                    -> pure (Avro.Int i)
+
+                _ ->
+                    fail "Int value expected"
+
+        Long _ ->
+            case obj of
+                Aeson.Number s
+                    | Just i <- Scientific.toBoundedInteger s
+                    -> pure (Avro.Long i)
+
+                _ ->
+                    fail "Long value expected"
+
+        Float ->
+            case obj of
+                Aeson.Number s
+                    | Right f <- Scientific.toBoundedRealFloat s
+                    -> pure (Avro.Float f)
+
+                _ ->
+                    fail "Float value expected"
+
+        Double ->
+            case obj of
+                Aeson.Number s
+                    | Right f <- Scientific.toBoundedRealFloat s
+                    -> pure (Avro.Double f)
+
+                _ ->
+                    fail "Double value expected"
+
+        String _ ->
+            case obj of
+                Aeson.String s ->
+                    pure (Avro.String s)
+
+                _ ->
+                    fail "String value expected"
+
+        Array items ->
+            case obj of
+                Aeson.Array vs ->
+                    Avro.Array . Boxed.toList <$>
+                        traverse (decodeValue items) vs
+
+                _ ->
+                    fail "Boolean value expected"
+
+        Map values ->
+            Avro.Map <$>
+                decodeDict
+                    (decodeValue values)
+                    obj
+
+        Union options ->
+            let
+                choice (ix, option) =
+                    case option of
+                        Null ->
+                            case obj of
+                                Aeson.Null ->
+                                    pure $
+                                        Avro.Union ix Avro.Null
+
+                                _ ->
+                                    fail "Null value expected"
+
+                        other ->
+                            case obj of
+                                Aeson.Object o ->  do
+                                    let
+                                        choiceKey =
+                                            keyFromText $
+                                                baseName (typeName other)
+                                    value
+                                        <- Aeson.explicitParseField
+                                                (decodeValue other)
+                                                o
+                                                choiceKey
+
+                                    return $
+                                        Avro.Union ix value
+
+                                _ ->
+                                    fail "Object value expected"
+
+
+                choices =
+                    fmap choice (List.zip [0..] options)
+
+            in
+            asum choices
+
+
+        Record _ _ _ fields ->
+            case obj of
+                Aeson.Object o ->
+                    let
+                        step acc = \case
+                            [] ->
+                                pure (reverse acc)
+
+                            x : xs -> do
+                                let
+                                    fieldKey =
+                                        keyFromText $
+                                            fieldName x
+                                a <- Aeson.explicitParseField
+                                            (decodeValue (fieldType x))
+                                            o
+                                            fieldKey
+
+                                step (a : acc) xs
+                    in
+                    Avro.Record <$> step [] fields
+
+                _ ->
+                    fail "Object value expected"
+
+
+        Enum _ _ _ symbols _ ->
+            case obj of
+                Aeson.String s ->
+                    case List.elemIndex s symbols of
+                        Nothing ->
+                            fail "Unknown enumeration value for schema"
+
+                        Just n ->
+                            pure $
+                                Avro.Enum n
+
+                _ ->
+                    fail "String value expected for enumeration"
+
+
+        Bytes {} ->
+            fail "Can't parse bytes just yet."
+
+        Fixed {} ->
+            fail "Can't parse fixed just yet."
+
+        NamedType {} ->
+            fail "Can't parse named type value. Normalise first"
 
 
 instance Aeson.FromJSON Schema where
@@ -407,7 +611,7 @@ encodeText :: Text -> Aeson.Value
 encodeText = Aeson.String
 
 
-encodeNameParts :: Maybe TypeName -> TypeName -> [TypeName] -> [ ( Aeson.Key, Aeson.Value ) ]
+encodeNameParts :: Maybe TypeName -> TypeName -> [TypeName] -> [ ( Key, Aeson.Value ) ]
 encodeNameParts context name aliases =
     let
         --
@@ -493,7 +697,7 @@ encodeList f =
 
 
 
-encodeOptionals :: [( Aeson.Key, Maybe Aeson.Value )] -> [( Aeson.Key, Aeson.Value )]
+encodeOptionals :: [( Key, Maybe Aeson.Value )] -> [( Key, Aeson.Value )]
 encodeOptionals =
     Maybe.mapMaybe (\( v, s ) -> fmap ( v, ) s)
 
@@ -511,7 +715,7 @@ decodeName context obj = do
 
 decodeAliases :: TypeName -> Aeson.Object -> Aeson.Parser [TypeName]
 decodeAliases context obj = do
-    raw <- Aeson.explicitParseFieldOmit (Just []) Aeson.parseJSON obj "aliases"
+    raw <- Aeson.explicitParseFieldMaybe Aeson.parseJSON obj "aliases" Aeson..!= []
 
     for raw $ \alias ->
         case Name.contextualTypeName (Just context) alias Nothing of
@@ -526,7 +730,7 @@ decodeFields context (Aeson.Object obj) = do
     fieldName <-
         Aeson.explicitParseField Aeson.parseJSON obj "name"
     fieldAliases <-
-        Aeson.explicitParseFieldOmit (Just []) Aeson.parseJSON obj "aliases"
+        Aeson.explicitParseFieldMaybe Aeson.parseJSON obj "aliases" Aeson..!= []
     fieldDoc <-
         Aeson.explicitParseFieldMaybe Aeson.parseJSON obj "doc"
     fieldOrder <-
@@ -534,7 +738,7 @@ decodeFields context (Aeson.Object obj) = do
     fieldType <-
         Aeson.explicitParseField (decodeSchemaInContext context) obj "type"
     fieldDefault <-
-        pure Nothing
+        Aeson.explicitParseFieldMaybe' (decodeDefaultValue fieldType) obj "default"
 
     pure Field {..}
 
@@ -544,7 +748,6 @@ decodeFields _ _ =
 decodeSchema :: Aeson.Value -> Aeson.Parser Schema
 decodeSchema =
     decodeSchemaInContext Nothing
-
 
 
 decodeSchemaInContext ::  Maybe TypeName -> Aeson.Value -> Aeson.Parser Schema
@@ -574,6 +777,21 @@ decodeSchemaInContext context vs = case vs of
 
             "string" ->
                 pure (String Nothing)
+
+            "array" ->
+                fail "Can't parse 'array' as standalone type."
+
+            "map" ->
+                fail "Can't parse 'map' as standalone type."
+
+            "record" ->
+                fail "Can't parse 'record' as standalone type."
+
+            "fixed" ->
+                fail "Can't parse 'fixed' as standalone type."
+
+            "enum" ->
+                fail "Can't parse 'enum' as standalone type."
 
             other ->
                 case Name.contextualTypeName context other Nothing of
@@ -684,9 +902,28 @@ decodeSchemaInContext context vs = case vs of
 
 
 
-encodeDict :: (k -> Aeson.Key) -> (a -> Aeson.Value) -> Map.Map k a -> Aeson.Value
+encodeDict :: (k -> Key) -> (a -> Aeson.Value) -> Map.Map k a -> Aeson.Value
 encodeDict kEnc aEnc vs =
     Aeson.object $
         bimap kEnc aEnc <$>
             Map.toList vs
 
+
+decodeDict :: (Aeson.Value -> Aeson.Parser a) -> Aeson.Value -> Aeson.Parser (Map.Map Text a)
+decodeDict aParser vs =
+    case vs of
+        Aeson.Object km -> do
+            base <-
+                traverse aParser km
+
+#if MIN_VERSION_aeson(2,0,0)
+            return $
+                Map.mapKeysMonotonic Key.toText . KeyMap.toMap $
+                    base
+#else
+            return $
+                Map.fromList . KeyMap.toList $
+                    base
+#endif
+        _ ->
+            fail "Expected Map"
