@@ -26,7 +26,7 @@ library
         Avro.Internal.ZigZag
 
     build-depends:
-        base >= 4.14 && <4.15,
+        base >= 4.14 && < 5,
         aeson,
         binary,
         bytestring,

@@ -599,8 +599,47 @@ encodeSchemaInContext context s =
                     <> required
                     <> encodeOptionals optionals
 
+        Fixed name aliases size logicalType ->
+            let
+                nameParts =
+                    encodeNameParts context name aliases
 
-        _ -> Aeson.Null
+                required =
+                    [ ( "type", Aeson.String "fixed" )
+                    , ( "size", Aeson.Number (fromIntegral size) )
+                    ]
+
+                optionals =
+                    [ ( "logicalType", fmap encodeString logicalType )
+                    ]
+
+            in
+            Aeson.object $
+                nameParts
+                    <> required
+                    <> encodeOptionals optionals
+
+
+        Enum name aliases doc symbols default_ ->
+            let
+                nameParts =
+                    encodeNameParts context name aliases
+
+                required =
+                    [ ( "type", Aeson.String "enum" )
+                    , ( "symbols", encodeList encodeText symbols )
+                    ]
+
+                optionals =
+                    [ ( "doc", fmap encodeString doc )
+                    , ( "default", fmap encodeText default_ )
+                    ]
+
+            in
+            Aeson.object $
+                nameParts
+                    <> required
+                    <> encodeOptionals optionals
 
 
 encodeString :: String -> Aeson.Value
