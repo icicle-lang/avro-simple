@@ -10,6 +10,9 @@ module Avro.Schema
     , SortOrder(..)
     , typeName
     , SchemaMismatch(..)
+
+    , SchemaInvalid (..)
+    , validateSchema
     )
 where
 
@@ -137,6 +140,76 @@ typeName s =
 
         Enum name _ _ _  _ ->
             name
+
+
+data SchemaInvalid
+    = SchemaNestedUnion
+    | SchemaIdenticalNamesInUnion TypeName
+    deriving (Eq, Show)
+
+
+{-| Validates a schema to ensure:
+
+  [ ] All types are defined
+  [*] Unions do not directly contain other unions
+  [*] Unions are not ambiguous (may not contain more than one schema with
+      the same type except for named types of record, fixed and enum)
+  [ ] Default values for unions can be cast as the type indicated by the
+      first structure.
+  [ ] Default values can be cast/de-serialize correctly.
+  [ ] Named types are resolvable
+-}
+validateSchema :: Schema -> Either SchemaInvalid Schema
+validateSchema =
+    go True
+        where
+    go allowUnionsHere = \case
+        Union xs | allowUnionsHere ->
+            let
+                sortedNames =
+                    List.sort $
+                        typeName <$> xs
+
+                firstDuplicate =
+                    findDuplicate sortedNames
+
+            in
+            case firstDuplicate of
+                Nothing ->
+                    Union <$>
+                        traverse (go False) xs
+
+                Just tn ->
+                    Left (SchemaIdenticalNamesInUnion tn)
+
+        Union _ ->
+            Left SchemaNestedUnion
+
+        Array xs ->
+            Array <$> validateSchema xs
+
+        Map xs ->
+            Map <$> validateSchema xs
+
+        Record name aliases doc fields ->
+            Record name aliases doc <$>
+                traverse goField fields
+
+        primitive ->
+            pure primitive
+
+    goField fld = do
+        inner <-
+            validateSchema (fieldType fld)
+
+        pure (fld { fieldType = inner })
+
+    findDuplicate
+        (a:b:rest) | a == b = Just a
+                   | otherwise = findDuplicate (b:rest)
+
+    findDuplicate
+        _ = Nothing
 
 
 {-| Errors which can occur when trying to read Avro with
