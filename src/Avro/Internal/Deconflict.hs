@@ -226,21 +226,34 @@ deconflict environmentNames readSchema writerSchema =
         Union readInfo ->
             let
                 --
-                -- Two pass search algorithm. First we search by the names of the elements,
-                -- then we search by whether they can be deconflicted.
+                -- Three pass search algorithm:
+                --   first we search by the full names of the elements;
+                --   then we search by the base names of the elements;
+                --   then we search by whether they can be deconflicted.
                 resolveBranch branchWriter continuation =
-                    case findWithIndex (compatiblyNamed (typeName branchWriter)) readInfo of
+                    case findWithIndex (identicalNames (typeName branchWriter)) readInfo of
                         Just ( r, ix ) ->
                             deconflict environmentNames r branchWriter
                                 >>= continuation ix
 
                         Nothing ->
-                            case findOk (\r -> deconflict environmentNames r branchWriter) readInfo of
+                            case findWithIndex (compatiblyNamed (typeName branchWriter)) readInfo of
                                 Just ( r, ix ) ->
-                                    continuation ix r
+                                    deconflict environmentNames r branchWriter
+                                        >>= continuation ix
 
                                 Nothing ->
-                                    Left $ MissingUnion (typeName branchWriter)
+                                    case findOk (\r -> deconflict environmentNames r branchWriter) readInfo of
+                                        Just ( r, ix ) ->
+                                            continuation ix r
+
+                                        Nothing ->
+                                            Left $ MissingUnion (typeName branchWriter)
+
+                identicalNames writerInfo reader =
+                    ((==) writerInfo . fst) $
+                        Maybe.fromMaybe (typeName reader, []) $
+                            nameAndAliasesFor reader
 
                 compatiblyNamed writeInfo reader =
                     (`Name.compatibleNames` writeInfo) $
