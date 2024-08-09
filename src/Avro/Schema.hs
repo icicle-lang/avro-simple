@@ -218,10 +218,11 @@ an incompatible Schema.
 data SchemaMismatch
     = TypeMismatch Schema Schema
     | MissingField TypeName Text
-    | FieldMismatch TypeName String SchemaMismatch
+    | FieldMismatch TypeName Text SchemaMismatch
     | MissingUnion TypeName
     | MissingSymbol Text
     | NamedTypeUnresolved TypeName
+    | FixedWrongSize TypeName Int Int
     deriving (Eq, Ord, Show)
 
 
@@ -833,7 +834,6 @@ decodeAliases context obj = do
         case Name.contextualTypeName (Just context) alias Nothing of
             Left s -> fail s
             Right tn -> pure tn
-
 
 
 

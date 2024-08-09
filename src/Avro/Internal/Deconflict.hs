@@ -3,6 +3,7 @@ module Avro.Internal.Deconflict where
 import           Avro.Name (TypeName)
 import qualified Avro.Name as Name
 import           Avro.Schema (Schema(..), SchemaMismatch(..), typeName, Field (..))
+import           Control.Arrow (left)
 import           Control.Monad (foldM)
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
@@ -202,12 +203,13 @@ deconflict environmentNames readSchema writerSchema =
 
                                 w : ws ->
                                     case pick (matching w) remains of
-                                        Just ( ( r, ix ), more ) -> do
-                                            dr <- deconflict nestedEnvironment (fieldType r) (fieldType w)
-                                            let
-                                                readField =
-                                                    ReadSchema.ReadField (fieldName r) dr (Just ix)
-                                            step ws (readField : written, more)
+                                        Just ( ( r, ix ), more ) ->
+                                            left (FieldMismatch readerName (fieldName w)) $ do
+                                                dr <- deconflict nestedEnvironment (fieldType r) (fieldType w)
+                                                let
+                                                    readField =
+                                                        ReadSchema.ReadField (fieldName r) dr (Just ix)
+                                                step ws (readField : written, more)
 
                                         Nothing -> do
                                             dr <- deconflict nestedEnvironment (fieldType w) (fieldType w)
@@ -226,12 +228,17 @@ deconflict environmentNames readSchema writerSchema =
         Union readInfo ->
             let
                 --
-                -- Three pass search algorithm:
-                --   first we search by the full names of the elements;
-                --   then we search by the base names of the elements;
-                --   then we search by whether they can be deconflicted.
+                -- Three pass search algorithm.
+                --
+                -- a) search by the full names of the elements;
+                -- b) if nothing is found, search by the base names of the elements,
+                --    or the full names of the aliases;
+                -- c) if nothing is found, search by whether they can be deconflicted.
+                --
+                -- we do not backtrack if there are errors deconflicting from the
+                -- initial searches.
                 resolveBranch branchWriter continuation =
-                    case findWithIndex (identicalNames (typeName branchWriter)) readInfo of
+                    case findWithIndex (exactlyNamed (typeName branchWriter)) readInfo of
                         Just ( r, ix ) ->
                             deconflict environmentNames r branchWriter
                                 >>= continuation ix
@@ -250,13 +257,11 @@ deconflict environmentNames readSchema writerSchema =
                                         Nothing ->
                                             Left $ MissingUnion (typeName branchWriter)
 
-                identicalNames writerInfo reader =
-                    ((==) writerInfo . fst) $
-                        Maybe.fromMaybe (typeName reader, []) $
-                            nameAndAliasesFor reader
+                exactlyNamed writerInfo reader =
+                    typeName reader == writerInfo
 
-                compatiblyNamed writeInfo reader =
-                    (`Name.compatibleNames` writeInfo) $
+                compatiblyNamed writerInfo reader =
+                    (`Name.compatibleNames` writerInfo) $
                         Maybe.fromMaybe (typeName reader, []) $
                             nameAndAliasesFor reader
 
@@ -280,9 +285,9 @@ deconflict environmentNames readSchema writerSchema =
 
 
 
-        Enum readerName _ _ readerSymbols readerDefault ->
+        Enum readerName readerAliases _ readerSymbols readerDefault ->
             case writerSchema of
-                Enum _ _ _  writerSymbols _ ->
+                Enum writerName _ _  writerSymbols _ | Name.compatibleNames (readerName, readerAliases) writerName ->
                     let
                         match writeSymbol =
                             case List.elemIndex writeSymbol readerSymbols of
@@ -312,9 +317,9 @@ deconflict environmentNames readSchema writerSchema =
                     basicError
 
 
-        Fixed readerName _ readerSize _ ->
+        Fixed readerName readerAliases readerSize _ ->
             case writerSchema of
-                Fixed _ _ writerSize _ ->
+                Fixed writerName _ writerSize _  | Name.compatibleNames (readerName, readerAliases) writerName ->
                     if readerSize == writerSize then
                         Right $
                             ReadSchema.Fixed
@@ -322,7 +327,7 @@ deconflict environmentNames readSchema writerSchema =
                                 readerSize
 
                     else
-                        basicError
+                        Left $ FixedWrongSize readerName readerSize writerSize
 
                 _ ->
                     basicError

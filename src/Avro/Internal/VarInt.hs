@@ -2,21 +2,14 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Avro.Internal.VarInt where
 
-import           Avro.Internal.ReadSchema (ReadSchema)
-import qualified Avro.Internal.ReadSchema as ReadSchema
-
-import           Avro.Value (Value)
-import qualified Avro.Value as Value
-import           Avro.Name
 
 import           Data.Binary.Get (Get)
 import qualified Data.Binary.Get as Get
 import           Data.Binary.Put (Put)
 import qualified Data.Binary.Put as Put
-import           Data.Map
 import qualified Data.List as List
 import           Data.Bits
-import           Data.Binary (Word8, Word32, Word64)
+import           Data.Binary (Word32, Word64)
 import           Data.Foldable (traverse_)
 
 
