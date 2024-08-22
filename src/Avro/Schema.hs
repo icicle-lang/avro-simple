@@ -32,6 +32,7 @@ import qualified Data.HashMap.Lazy as KeyMap
 #endif
 
 import           Data.Bifunctor (bimap)
+import qualified Data.ByteString as Strict
 import           Data.Foldable (asum)
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
@@ -42,6 +43,7 @@ import qualified Data.Text as Text
 import           Data.Text (Text)
 import           Data.Traversable (for)
 import qualified Data.Vector as Boxed
+import qualified Data.Char as Char
 
 
 {-| Field Sort ordering
@@ -259,22 +261,22 @@ index i xs =
 
 
 
-encodeDefaultValue :: Schema -> Avro.Value -> Aeson.Value
+encodeDefaultValue :: Schema -> Avro.Value -> Maybe Aeson.Value
 encodeDefaultValue schema v =
     case ( schema, v ) of
-        ( Union options , Avro.Union 0 ls ) ->
+        ( Union options, Avro.Union 0 ls ) ->
             case options of
                 s : _ ->
-                    encodeValue s ls
+                    Just (encodeValue s ls)
 
                 _ ->
-                    Aeson.Null
+                    Nothing
 
         ( Union _, _ ) ->
-            Aeson.Null
+            Nothing
 
         _ ->
-            encodeValue schema v
+            Just (encodeValue schema v)
 
 
 decodeDefaultValue :: Schema -> Aeson.Value -> Aeson.Parser Avro.Value
@@ -345,14 +347,11 @@ encodeValue schema v =
                     fields
                     ls
 
+        ( Bytes {}, Avro.Bytes bytes ) ->
+            encodeText (encodeBytes bytes)
 
-        ( Bytes _, Avro.Bytes _bytes ) ->
-            -- TODO encodeBytes bytes
-            Aeson.Null
-
-        ( Fixed {}, Avro.Fixed _bytes ) ->
-            -- encodeBytes bytes
-            Aeson.Null
+        ( Fixed {}, Avro.Fixed bytes ) ->
+            encodeText (encodeBytes bytes)
 
         _ ->
             Aeson.Null
@@ -519,10 +518,24 @@ decodeValue schema obj =
 
 
         Bytes {} ->
-            fail "Can't parse bytes just yet."
+            case obj of
+                Aeson.String s ->
+                    Avro.Bytes <$>
+                        decodeBytes s
+
+                _ ->
+                    fail "String value expected for bytes"
+
 
         Fixed {} ->
-            fail "Can't parse fixed just yet."
+            case obj of
+                Aeson.String s ->
+                    Avro.Fixed <$>
+                        decodeBytes s
+
+                _ ->
+                    fail "String value expected for fixed"
+
 
         NamedType {} ->
             fail "Can't parse named type value. Normalise first"
@@ -657,9 +670,9 @@ encodeSchemaInContext context s =
                             ]
 
                         fieldOptionals =
-                            [ (  fromString "doc", fmap encodeString fieldDoc )
-                            , (  fromString "order", fmap encodeSortOrder fieldOrder )
-                            , (  fromString "default", fmap (encodeDefaultValue fieldType) fieldDefault)
+                            [ (  fromString "doc", encodeString <$> fieldDoc )
+                            , (  fromString "order", encodeSortOrder <$> fieldOrder )
+                            , (  fromString "default", fieldDefault >>= encodeDefaultValue fieldType)
                             ]
                     in
                     Aeson.object $
@@ -732,7 +745,7 @@ encodeNameParts context name aliases =
         -- name to be fully qualified and don't include the namespace at all.
         --
         -- But, items without a namespace should also be written without the record
-        -- in this case, but if we just blindly omit the namespace it will intead
+        -- in this case, but if we just blindly omit the namespace it will instead
         -- inherit it. So we add a small check to ensure if the context is the null
         -- namespace and we don't have one ourselves, we can inherit the null
         -- namespace.
@@ -1039,3 +1052,18 @@ decodeDict aParser vs =
 #endif
         _ ->
             fail "Expected Map"
+
+
+-- | Parses text into bytes by mapping their code points.
+decodeBytes :: Text -> Aeson.Parser Strict.ByteString
+decodeBytes bytes =
+    case Text.find (not . inRange . Char.ord) bytes of
+        Just badChar -> fail $ "Invalid character in bytes or fixed string representation: " <> show badChar
+        Nothing      -> pure $ Strict.pack $ fromIntegral . Char.ord <$> Text.unpack bytes
+    where
+        inRange c = c >= 0x00 && c <= 0xFF
+
+-- | Encode bytes to text by mapping them to code points.
+encodeBytes :: Strict.ByteString -> Text
+encodeBytes =
+    Text.pack . map (Char.chr . fromIntegral) . Strict.unpack

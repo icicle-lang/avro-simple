@@ -10,21 +10,19 @@ import qualified Data.Maybe as Maybe
 import qualified Data.List as List
 import           Data.Set (Set)
 import qualified Data.Set as Set
-import           Data.Text (Text)
 import           Avro.Internal.ReadSchema (ReadSchema)
 import qualified Avro.Internal.ReadSchema as ReadSchema
 
 
 
-canonicalNamesForSchema :: Schema -> [Text]
-canonicalNamesForSchema schema =
+nameSetForSchema :: Schema -> Set TypeName
+nameSetForSchema schema =
     case nameAndAliasesFor schema of
         Just (name, aliases) ->
-            Name.baseName . Name.canonicalName
-                <$> name : aliases
+            Set.fromList (name : aliases)
 
         Nothing ->
-            []
+            Set.empty
 
 
 nameAndAliasesFor :: Schema -> Maybe (TypeName, [TypeName])
@@ -49,7 +47,7 @@ This allows values to be read by a different schema from
 whence it was written.
 
 -}
-deconflict :: Set Text -> Schema -> Schema -> Either SchemaMismatch ReadSchema
+deconflict :: Set TypeName -> Schema -> Schema -> Either SchemaMismatch ReadSchema
 deconflict environmentNames readSchema writerSchema =
     let
         basicError =
@@ -171,7 +169,8 @@ deconflict environmentNames readSchema writerSchema =
                 Record _ _ _ writerFields  ->
                     let
                         nestedEnvironment =
-                            Set.union environmentNames (Set.fromList (canonicalNamesForSchema readSchema))
+                            Set.union environmentNames $
+                                nameSetForSchema readSchema
 
                         matching w ( r, _ ) =
                             fieldName r
@@ -337,7 +336,7 @@ deconflict environmentNames readSchema writerSchema =
             case writerSchema of
                 NamedType writerName ->
                     if readerName == writerName then
-                        if Set.member (Name.baseName (Name.canonicalName writerName)) environmentNames then
+                        if Set.member writerName environmentNames then
                             Right (ReadSchema.NamedType readerName)
 
                         else

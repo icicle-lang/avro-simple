@@ -1,5 +1,8 @@
+{-# LANGUAGE RecordWildCards #-}
 module Avro
     ( makeDecoder, makeEncoder
+
+    , Environment (..), makeDecoderInEnvironment
     ) where
 
 import qualified Avro.Codec as Codec
@@ -8,6 +11,7 @@ import           Avro.Internal.Deconflict (deconflict)
 import           Avro.Schema (Schema, SchemaMismatch)
 import           Data.Binary (Get, Put)
 import qualified Data.Set as Set
+import qualified Avro.Internal.Overlay as Overlay
 
 {-| Create a binary decoder for avro data given a Codec and the writer's Schema.
 
@@ -19,23 +23,37 @@ interest, but also the writer of the data's [`Schema`](Avro-Schema#Schema).
 
 -}
 makeDecoder :: Codec.Codec a -> Schema -> Either SchemaMismatch (Get a)
-makeDecoder codec writerSchema = do
-    readSchema <- deconflict Set.empty (Codec.schema codec) writerSchema
+makeDecoder =
+    makeDecoderInEnvironment (Environment [] [])
 
+data Environment =
+    Environment {
+        readerEnvironment :: [Schema],
+        writerEnvironment :: [Schema]
+    }
+
+
+makeDecoderInEnvironment :: Environment -> Codec.Codec a -> Schema -> Either SchemaMismatch (Get a)
+makeDecoderInEnvironment env Codec.Codec {..} writerSchema = do
     let
-        decoder =
-            Bytes.makeDecoder Bytes.emptyEnvironment readSchema
+        overlayedCodec =
+            Codec.Codec (Overlay.overlays schema (readerEnvironment env))
+                decoder writer
+
+        overlayedWriter =
+            Overlay.overlays writerSchema (writerEnvironment env)
+
+    readSchema <- deconflict Set.empty (Codec.schema overlayedCodec) overlayedWriter
 
     pure $ do
         values <-
-            decoder
+            Bytes.makeDecoder Bytes.emptyEnvironment readSchema
 
-        case Codec.decoder codec values of
+        case Codec.decoder overlayedCodec values of
             Nothing ->
                 fail "Couldn't extract typed value from parsed avro"
             Just a ->
                 pure a
-
 
 
 

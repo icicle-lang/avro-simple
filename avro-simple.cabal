@@ -22,6 +22,7 @@ library
         Avro.Internal.Deconflict
         Avro.Internal.DList
         Avro.Internal.ReadSchema
+        Avro.Internal.Overlay
         Avro.Internal.VarInt
         Avro.Internal.ZigZag
 

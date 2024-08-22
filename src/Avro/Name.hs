@@ -11,6 +11,7 @@ import qualified Data.Maybe as Maybe
 import qualified Data.Text as Text
 import           Data.Text (Text)
 import qualified Data.Char as Char
+import Data.Function (on)
 
 {-| An Avro Type Name
 
@@ -25,7 +26,13 @@ data TypeName =
   TypeName
     { baseName :: Text
     , nameSpace :: [Text]
-    } deriving (Eq, Ord, Show)
+    } deriving (Show)
+
+instance Eq TypeName where
+  (==) = (==) `on` (baseName . canonicalName)
+
+instance Ord TypeName where
+  compare = compare `on` (baseName . canonicalName)
 
 
 {-| Normalise a TypeName.
