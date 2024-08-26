@@ -13,8 +13,6 @@ import           Avro.Name (TypeName(..))
 import qualified Data.Binary.Get as Get
 import qualified Data.Binary.Put as Put
 import           Data.Functor.Identity (Identity (..))
-import qualified Data.Map as Map
-import           Data.Profunctor (Profunctor(..))
 
 
 trip :: (Eq a, Show a) => Codec a -> a -> PropertyT IO ()
@@ -35,14 +33,14 @@ tripVersions reader writer example = do
 linkedList :: Codec a -> Codec [a]
 linkedList a =
     let
-        packList (Right (a, b)) =
-            a : b
+        packList (Right (g, b)) =
+            g : b
 
         packList (Left ())=
             []
 
-        unpackList (a:b) =
-            Right (a, b)
+        unpackList (g:b) =
+            Right (g, b)
 
         unpackList [] =
             Left ()

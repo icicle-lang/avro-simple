@@ -1,28 +1,17 @@
-module Avro.Internal.Deconflict where
+{-# LANGUAGE TupleSections #-}
+module Avro.Internal.Deconflict (deconflict) where
 
 import           Avro.Name (TypeName)
 import qualified Avro.Name as Name
 import           Avro.Schema (Schema(..), SchemaMismatch(..), typeName, Field (..))
 import           Control.Arrow (left)
 import           Control.Monad (foldM)
+import           Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
 import qualified Data.List as List
-import           Data.Set (Set)
-import qualified Data.Set as Set
 import           Avro.Internal.ReadSchema (ReadSchema)
 import qualified Avro.Internal.ReadSchema as ReadSchema
-
-
-
-nameSetForSchema :: Schema -> Set TypeName
-nameSetForSchema schema =
-    case nameAndAliasesFor schema of
-        Just (name, aliases) ->
-            Set.fromList (name : aliases)
-
-        Nothing ->
-            Set.empty
 
 
 nameAndAliasesFor :: Schema -> Maybe (TypeName, [TypeName])
@@ -47,7 +36,7 @@ This allows values to be read by a different schema from
 whence it was written.
 
 -}
-deconflict :: Set TypeName -> Schema -> Schema -> Either SchemaMismatch ReadSchema
+deconflict :: Map TypeName TypeName -> Schema -> Schema -> Either SchemaMismatch ReadSchema
 deconflict environmentNames readSchema writerSchema =
     let
         basicError =
@@ -164,13 +153,14 @@ deconflict environmentNames readSchema writerSchema =
                     basicError
 
 
-        Record readerName _ _ readerFields ->
+        Record readerName readerAliases _ readerFields ->
             case writerSchema of
                 Record _ _ _ writerFields  ->
                     let
                         nestedEnvironment =
-                            Set.union environmentNames $
-                                nameSetForSchema readSchema
+                            Map.union environmentNames
+                                $ Map.fromList
+                                $ map (,readerName) (readerName : readerAliases)
 
                         matching w ( r, _ ) =
                             fieldName r
@@ -335,18 +325,19 @@ deconflict environmentNames readSchema writerSchema =
         NamedType readerName ->
             case writerSchema of
                 NamedType writerName ->
-                    if readerName == writerName then
-                        if Set.member writerName environmentNames then
-                            Right (ReadSchema.NamedType readerName)
+                    case Map.lookup writerName environmentNames of
+                        Just n ->
+                            if n == readerName then
+                                Right (ReadSchema.NamedType readerName)
 
-                        else
+                            else
+                                basicError
+
+                        Nothing ->
                             Left (NamedTypeUnresolved writerName)
 
-                    else
-                        basicError
-
                 _ ->
-                    basicError
+                    Left (NamedTypeUnresolved readerName)
 
 
 

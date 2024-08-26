@@ -1,5 +1,9 @@
 {-# LANGUAGE DoAndIfThenElse #-}
-module Avro.Internal.Bytes where
+module Avro.Internal.Bytes (
+      emptyEnvironment
+    , encodeValue
+    , makeDecoder
+    ) where
 
 import           Avro.Internal.ReadSchema (ReadSchema, ReadField)
 import qualified Avro.Internal.ReadSchema as ReadSchema
@@ -37,11 +41,6 @@ newtype Environment =
 emptyEnvironment :: Environment
 emptyEnvironment =
     Environment Map.empty
-
-
-environmentNames :: Environment -> [TypeName]
-environmentNames (Environment env) =
-    Map.keys env
 
 
 insertEnvironment :: TypeName -> Get Value -> Environment -> Environment

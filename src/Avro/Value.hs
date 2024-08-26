@@ -1,4 +1,6 @@
-module Avro.Value where
+module Avro.Value (
+    Value (..)
+) where
 
 import Data.ByteString (ByteString)
 import Data.Int (Int32, Int64)

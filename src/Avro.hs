@@ -10,7 +10,7 @@ import qualified Avro.Internal.Bytes as Bytes
 import           Avro.Internal.Deconflict (deconflict)
 import           Avro.Schema (Schema, SchemaMismatch)
 import           Data.Binary (Get, Put)
-import qualified Data.Set as Set
+import qualified Data.Map as Map
 import qualified Avro.Internal.Overlay as Overlay
 
 {-| Create a binary decoder for avro data given a Codec and the writer's Schema.
@@ -43,7 +43,8 @@ makeDecoderInEnvironment env Codec.Codec {..} writerSchema = do
         overlayedWriter =
             Overlay.overlays writerSchema (writerEnvironment env)
 
-    readSchema <- deconflict Set.empty (Codec.schema overlayedCodec) overlayedWriter
+    readSchema <-
+        deconflict Map.empty (Codec.schema overlayedCodec) overlayedWriter
 
     pure $ do
         values <-

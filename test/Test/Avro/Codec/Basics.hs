@@ -8,7 +8,6 @@ import qualified Hedgehog.Range as Range
 import qualified Avro
 import           Avro.Codec (Codec)
 import qualified Avro.Codec as Codec
-import           Avro.Name (TypeName(..))
 
 import qualified Data.Binary.Get as Get
 import qualified Data.Binary.Put as Put

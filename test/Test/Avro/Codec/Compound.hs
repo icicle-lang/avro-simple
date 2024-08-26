@@ -10,13 +10,10 @@ import           Avro.Codec (Codec)
 import qualified Avro.Codec as Codec
 import           Avro.Name (TypeName (..))
 
-import           Data.Profunctor (lmap)
 import qualified Data.Binary.Get as Get
 import qualified Data.Binary.Put as Put
 import           Data.Functor.Identity (Identity (..))
-import qualified Data.Map as Map
 import           Data.Text (Text)
-import qualified Data.Text as Text
 import           Data.Int (Int32)
 
 

@@ -1,5 +1,5 @@
 {-# LANGUAGE TupleSections #-}
-module Avro.Internal.Overlay where
+module Avro.Internal.Overlay (overlays) where
 
 import qualified Data.List as List
 import           Data.Map (Map)
@@ -56,7 +56,8 @@ types separately and compose them into larger objects.
 This function will rebuild a complete Schema from small components so that
 it is ready to encode and decode data.
 
-Schemas are also parsed, like, left to right.
+Schemas are also parsed, in a depth first manner, left to right, allowing
+fields in a record to use types defined in earlier fields (for example).
 
 -}
 overlays :: Schema -> [Schema] -> Schema

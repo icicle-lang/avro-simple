@@ -36,6 +36,7 @@ library
         profunctors,
         scientific,
         text,
+        transformers,
         unordered-containers,
         vector
 
@@ -54,6 +55,9 @@ test-suite avro-simple-test
         Test.Avro.Codec.Compound
         Test.Avro.Codec.Recursive
         Test.Avro.Schema.Roundtrip
+        Test.Avro.Schema.Validation
+        Test.Avro.Resolutions.Base
+        Test.Avro.Resolutions.Basics
 
     build-depends:
         base >= 4.11 && < 5,
@@ -66,3 +70,5 @@ test-suite avro-simple-test
         profunctors,
         text,
         hedgehog
+
+    ghc-options: -Wall

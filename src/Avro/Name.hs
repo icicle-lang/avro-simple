@@ -2,16 +2,17 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Avro.Name
     ( TypeName (..)
-    , contextualTypeName, canonicalName
-    , compatibleNames
+    , contextualTypeName, canonicalName, renderFullName
+    , validName, compatibleNames
     ) where
 
+import qualified Data.Char as Char
+import           Data.Function (on)
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
-import qualified Data.Text as Text
 import           Data.Text (Text)
-import qualified Data.Char as Char
-import Data.Function (on)
+import qualified Data.Text as Text
+import           Data.Foldable (traverse_)
 
 {-| An Avro Type Name
 
@@ -29,10 +30,21 @@ data TypeName =
     } deriving (Show)
 
 instance Eq TypeName where
-  (==) = (==) `on` (baseName . canonicalName)
+  (==) = (==) `on` renderFullName
 
 instance Ord TypeName where
-  compare = compare `on` (baseName . canonicalName)
+  compare = compare `on` renderFullName
+
+
+{-| Render a TypeName.
+
+This replaces short names with fullnames, using applicable namespaces
+to do so, then eliminate namespace attributes, which are now redundant.
+
+-}
+renderFullName :: TypeName -> Text
+renderFullName TypeName { baseName, nameSpace} =
+    Text.intercalate "." (nameSpace ++ [baseName])
 
 
 {-| Normalise a TypeName.
@@ -42,18 +54,14 @@ to do so, then eliminate namespace attributes, which are now redundant.
 
 -}
 canonicalName :: TypeName -> TypeName
-canonicalName TypeName { baseName, nameSpace} =
-    let
-        built =
-            Text.intercalate "." (nameSpace ++ [baseName])
-    in
-    TypeName { baseName = built, nameSpace = [] }
+canonicalName input =
+    TypeName { baseName = renderFullName input, nameSpace = [] }
 
 
 
 {-| Build a TypeName from a qualified string.
 -}
-parseFullName :: Text -> Either String TypeName
+parseFullName :: Text -> Either Text TypeName
 parseFullName input =
     case unsnoc (splitNameParts input) of
         Just ( rest, base ) ->
@@ -77,7 +85,7 @@ Arguments:
   - Optional Namespace
 
 -}
-contextualTypeName :: Maybe TypeName -> Text -> Maybe Text -> Either String TypeName
+contextualTypeName :: Maybe TypeName -> Text -> Maybe Text -> Either Text TypeName
 contextualTypeName context input explicit =
     if Maybe.isNothing (Text.findIndex (== '.') input) then
         case explicit of
@@ -127,7 +135,7 @@ unsnoc list =
 
 
 
-validNamePart :: Text -> Either String Text
+validNamePart :: Text -> Either Text Text
 validNamePart s =
     case Text.unpack s of
         c : cs ->
@@ -140,6 +148,20 @@ validNamePart s =
         _ ->
             Left "Type name is empty"
 
+
+
+{-| Test that a `TypeName` is valid
+
+That is, test that
+
+  - start with [A-Za-z\_][A-Za-z_]
+  - subsequently contain only [A-Za-z0-9\_][A-Za-z0-9_]
+
+-}
+validName :: TypeName -> Either Text TypeName
+validName input = do
+    traverse_ validNamePart (baseName input : nameSpace input)
+    pure input
 
 
 {-| Split a name (or namespace)

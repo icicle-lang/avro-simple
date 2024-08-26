@@ -13,12 +13,16 @@ module Avro.Schema
 
     , SchemaInvalid (..)
     , validateSchema
-    )
-where
+    , canonicalise
+    ) where
 
 import qualified Avro.Name as Name
 import           Avro.Name (TypeName (..))
 import qualified Avro.Value as Avro
+
+import           Control.Arrow (left)
+import           Control.Monad (void)
+import           Control.Monad.Trans.State (StateT (..))
 
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson
@@ -38,6 +42,8 @@ import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified Data.Map as Map
 import qualified Data.Scientific as Scientific
+import           Data.Set (Set)
+import qualified Data.Set as Set
 import           Data.String (IsString(..))
 import qualified Data.Text as Text
 import           Data.Text (Text)
@@ -147,71 +153,274 @@ typeName s =
 data SchemaInvalid
     = SchemaNestedUnion
     | SchemaIdenticalNamesInUnion TypeName
+    | SchemaHasInvalidFieldName TypeName Text Text
+    | SchemaHasInvalidName TypeName Text
+    | SchemaHasDuplicateEnumValue TypeName Text
+    | SchemaEnumDefaultNotFound TypeName Text
+    | SchemaRedefinedType TypeName
     deriving (Eq, Show)
 
 
-{-| Validates a schema to ensure:
+{-| Validates an Avro schema.
 
-  [ ] All types are defined
-  [*] Unions do not directly contain other unions
-  [*] Unions are not ambiguous (may not contain more than one schema with
-      the same type except for named types of record, fixed and enum)
-  [ ] Default values for unions can be cast as the type indicated by the
-      first structure.
-  [ ] Default values can be cast/de-serialize correctly.
-  [ ] Named types are resolvable
+Schema's produced using the Codec module or parsed from JSON are typically
+valid, but there are some ways to create invalid Schemas which may not be
+well received by other implementations.
+
+This function checks for the following infelicities:
+
+  - Unions must not directly contain other unions,
+  - Unions must not ambiguous (contain more than one schemas with the same
+    name or simple type),
+  - Enums must not have duplicate values,
+  - Enums with a default values must include the value in their options,
+  - Type names and record field names are valid, and
+  - Named types are not defined more than once.
+
+Other things which are currently not covered by this function:
+
+  - Default values are of the correct type.
+
+The JSON parser will not parse schemas with invalid names or values of the
+wrong type.
+
+If working with multiple Codecs, it can be a good idea to include a test in
+your test suite applying this function to your Codec schemas.
+
 -}
-validateSchema :: Schema -> Either SchemaInvalid Schema
-validateSchema =
-    go True
-        where
-    go allowUnionsHere = \case
-        Union xs | allowUnionsHere ->
-            let
-                sortedNames =
-                    List.sort $
-                        typeName <$> xs
+validateSchema :: Schema -> Either SchemaInvalid ()
+validateSchema top =
+    let
+        go :: Bool -> Schema -> Set TypeName ->  Either SchemaInvalid ( (), Set TypeName )
+        go allowUnionsHere schema alreadyDefined =
+            case schema of
+                Union options ->
+                    if allowUnionsHere then
+                        let
+                            firstDuplicate =
+                                findDuplicate (typeName <$> options)
+                        in
+                        case firstDuplicate of
+                            Nothing -> do
+                                ( _, fin ) <- traverseAccumL (go False) options alreadyDefined
+                                pure ( (), fin )
 
-                firstDuplicate =
-                    findDuplicate sortedNames
+                            Just tn ->
+                                Left (SchemaIdenticalNamesInUnion tn)
 
-            in
-            case firstDuplicate of
+                    else
+                        Left SchemaNestedUnion
+
+                Array items ->
+                    go True items alreadyDefined
+
+                Map values ->
+                    go True values alreadyDefined
+
+                Record name aliases _ fields -> do
+                    ( _, fin ) <- traverseAccumL (goField name) fields alreadyDefined
+                    ((), ) <$>
+                        validNames fin name aliases
+
+                Enum name aliases _ symbols enumDefault -> do
+
+                    case findDuplicate symbols of
+                        Just x ->
+                            Left (SchemaHasDuplicateEnumValue name x)
+
+                        Nothing ->
+                            pure ()
+
+
+                    case enumDefault of
+                        Just x ->
+                            if List.elem x symbols then
+                                pure ()
+
+                            else
+                                Left (SchemaEnumDefaultNotFound name x)
+
+                        Nothing ->
+                            pure ()
+
+                    ((), ) <$>
+                        validNames alreadyDefined name aliases
+
+                Fixed name aliases _ _ ->
+                    ((), ) <$>
+                        validNames alreadyDefined name aliases
+
+                NamedType info -> do
+                    _ <- left (SchemaHasInvalidName info) $
+                        Name.validName info
+
+                    pure ( (), alreadyDefined )
+
+                _ ->
+                    Right ( (), alreadyDefined )
+
+        validNames seen name aliases =
+            case findErr Name.validName (name : aliases) of
+                Just ( nm, err ) ->
+                    Left (SchemaHasInvalidName nm err)
+
                 Nothing ->
-                    Union <$>
-                        traverse (go False) xs
+                    if Set.member name seen then
+                        Left (SchemaRedefinedType name)
 
-                Just tn ->
-                    Left (SchemaIdenticalNamesInUnion tn)
+                    else
+                        Right (Set.insert name seen)
 
-        Union _ ->
-            Left SchemaNestedUnion
+        goField :: TypeName -> Field -> Set TypeName ->  Either SchemaInvalid ( (), Set TypeName )
+        goField nm fld seen = do
+            _ <- left (SchemaHasInvalidFieldName nm (fieldName fld)) $
+                Name.validName nm
 
-        Array xs ->
-            Array <$> validateSchema xs
+            go True (fieldType fld) seen
 
-        Map xs ->
-            Map <$> validateSchema xs
+        findDuplicate :: Ord a => [a] -> Maybe a
+        findDuplicate =
+            let
+                step ls =
+                    case ls of
+                        x : y : zs ->
+                            if x == y then
+                                Just x
 
-        Record name aliases doc fields ->
-            Record name aliases doc <$>
-                traverse goField fields
+                            else
+                                step (y : zs)
 
-        primitive ->
-            pure primitive
+                        _ ->
+                            Nothing
+            in
+            step . List.sort
 
-    goField fld = do
-        inner <-
-            validateSchema (fieldType fld)
+        findErr :: (a -> Either e b) -> [a] -> Maybe ( a, e )
+        findErr f =
+            let
+                step input =
+                    case input of
+                        x : xs ->
+                            case f x of
+                                Left b ->
+                                    Just ( x, b )
 
-        pure (fld { fieldType = inner })
+                                Right _ ->
+                                    step xs
 
-    findDuplicate
-        (a:b:rest) | a == b = Just a
-                   | otherwise = findDuplicate (b:rest)
+                        _ ->
+                            Nothing
+            in
+            step
 
-    findDuplicate
-        _ = Nothing
+        traverseAccumL :: Monad m => (a -> s -> m (b, s)) -> [a] -> s ->  m ([b], s)
+        traverseAccumL f xs s =
+            runStateT (traverse (StateT . f) xs) s
+
+    in
+    void $
+        go True top Set.empty
+
+
+
+
+{-| Turn an Avro schema into its [canonical form](https://avro.apache.org/docs/1.11.1/specification/#parsing-canonical-form-for-schemas).
+
+Schema canonical form can be used to determine if two schemas are
+functionally equivalent for writing Avro values, as it strips
+documentation and aliases as well as normalises names and
+rendering.
+
+While canonical form technically refers to a formatted JSON string
+with no whitespace between terms, this function only transforms a
+Schema value, and one should compose the following functions if the
+canonical form string is required.
+
+    import Avro
+    import Avro.Schema as Schema exposing (Schema)
+    import Json.Encode as Encode
+
+    renderCanonical : Schema -> String
+    renderCanonical s =
+        Schema.canonical s
+            |> Avro.schemaEncoder
+            |> Encode.encode 0
+
+-}
+canonicalise :: Schema -> Schema
+canonicalise schema =
+    case schema of
+        Null ->
+            Null
+
+        Boolean ->
+            Boolean
+
+        Int _ ->
+            Int Nothing
+
+        Long _ ->
+            Long Nothing
+
+        Float ->
+            Float
+
+        Double ->
+            Double
+
+        Bytes _ ->
+            Bytes Nothing
+
+        String _ ->
+            String Nothing
+
+        Array items ->
+            Array ( canonicalise items )
+
+        Map values ->
+            Map ( canonicalise values )
+
+        Record name _ _ fields ->
+            let
+                canonicalField fld =
+                    Field
+                        { fieldName = fieldName fld
+                        , fieldAliases = []
+                        , fieldDoc = Nothing
+                        , fieldDefault = Nothing
+                        , fieldOrder = Nothing
+                        , fieldType = fieldType fld
+                        }
+            in
+            Record
+                (Name.canonicalName name)
+                []
+                Nothing
+                (List.map canonicalField fields)
+
+
+        Enum name _ _ symbols enumDefault ->
+            Enum
+                (Name.canonicalName name)
+                []
+                Nothing
+                symbols
+                enumDefault
+
+        Union options ->
+            Union (List.map canonicalise options)
+
+        Fixed name _ size _ ->
+            Fixed
+                (Name.canonicalName name)
+                []
+                size
+                Nothing
+
+
+        NamedType nm ->
+            NamedType (Name.canonicalName nm)
+
 
 
 {-| Errors which can occur when trying to read Avro with
@@ -250,6 +459,9 @@ keyFromText = Key.fromText
 keyFromText = id
 type Key = Text
 #endif
+
+
+
 
 index :: Int -> [a] -> Maybe a
 index i xs =
@@ -835,7 +1047,7 @@ decodeName context obj = do
     nameSpace <- obj Aeson..:? "namespace"
 
     case Name.contextualTypeName context name nameSpace of
-        Left s -> fail s
+        Left s -> fail (Text.unpack s)
         Right tn -> pure tn
 
 
@@ -845,7 +1057,7 @@ decodeAliases context obj = do
 
     for raw $ \alias ->
         case Name.contextualTypeName (Just context) alias Nothing of
-            Left s -> fail s
+            Left s -> fail (Text.unpack s)
             Right tn -> pure tn
 
 
@@ -921,7 +1133,7 @@ decodeSchemaInContext context vs = case vs of
             other ->
                 case Name.contextualTypeName context other Nothing of
                     Left s ->
-                        fail s
+                        fail (Text.unpack s)
                     Right tn ->
                         pure (NamedType tn)
 
@@ -1003,7 +1215,7 @@ decodeSchemaInContext context vs = case vs of
                     other ->
                         case Name.contextualTypeName context other Nothing of
                             Left s ->
-                                fail s
+                                fail (Text.unpack s)
                             Right tn ->
                                 pure (NamedType tn)
 
@@ -1067,3 +1279,4 @@ decodeBytes bytes =
 encodeBytes :: Strict.ByteString -> Text
 encodeBytes =
     Text.pack . map (Char.chr . fromIntegral) . Strict.unpack
+

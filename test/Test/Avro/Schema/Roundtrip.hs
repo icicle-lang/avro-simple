@@ -97,10 +97,10 @@ fuzzValue schema =
         Schema.Boolean ->
             Avro.Boolean <$> Gen.bool
 
-        Schema.Int m_s ->
+        Schema.Int _ ->
             Avro.Int <$> Gen.integral (Range.linear (-10) 10)
 
-        Schema.Long m_s ->
+        Schema.Long _ ->
             Avro.Long <$> Gen.integral (Range.linear (-10) 10)
 
         Schema.Float ->
@@ -109,10 +109,10 @@ fuzzValue schema =
         Schema.Double ->
             Avro.Double <$> Gen.double (Range.constant (-10) 10)
 
-        Schema.Bytes m_s ->
+        Schema.Bytes _ ->
             Gen.discard
 
-        Schema.String m_s ->
+        Schema.String _ ->
             Avro.String <$>
                 Gen.text (Range.constant (-10) 10) Gen.ascii
 
@@ -127,14 +127,14 @@ fuzzValue schema =
                         <*> fuzzValue sc
                 )
 
-        Schema.NamedType tn ->
+        Schema.NamedType _ ->
             Gen.discard
 
-        Schema.Record tn tns m_s fis ->
+        Schema.Record _ _ _ fis ->
             Avro.Record <$>
                 traverse (fuzzValue . fieldType) fis
 
-        Schema.Enum tn tns m_s txts m_txt ->
+        Schema.Enum _ _ _ txts _ ->
             Avro.Enum <$>
                 Gen.int (Range.linear 0 (length txts - 1))
 
@@ -146,14 +146,14 @@ fuzzValue schema =
             Avro.Union selection <$>
                 fuzzValue (scs !! selection)
 
-        Schema.Fixed tn tns n m_s ->
+        Schema.Fixed {} ->
             Gen.discard
 
 
 fuzzDefaultValue :: Schema -> Gen Avro.Value
 fuzzDefaultValue schema =
     case schema of
-        Schema.Union (x : xs) -> do
+        Schema.Union (x : _) -> do
             Avro.Union 0 <$>
                 fuzzValue x
 
