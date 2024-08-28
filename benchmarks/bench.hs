@@ -43,7 +43,7 @@ accountCodec =
 
 personCodec :: Codec Person
 personCodec =
-    Codec.record (TypeName "student" []) $
+    Codec.record (TypeName "person" []) $
         Person
             <$> Codec.requiredField "name" Codec.string personWho
             <*> Codec.requiredField "age" Codec.int personAge
