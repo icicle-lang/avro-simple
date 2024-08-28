@@ -1,11 +1,54 @@
+{-| This modules defines how to build Avro Codecs.
+
+Codec's represent how to encode and decode data for
+your domain types, as well as the schema with which
+they will be written.
+
+For example, below we define a type alias and how it
+would be represented as an Avro record
+
+> data Person =
+>     Person {
+>         personName :: Text
+>       , personAge :: Int32
+>     } deriving (Eq, Show)
+>
+> personCodec :: Codec Person
+> personCodec =
+>     Codec.record (TypeName "person" []) $ Person
+>           <$> Codec.requiredField "name" Codec.string personName
+>           <*> Codec.requiredField "age" Codec.int personAge
+
+
+Furthermore, one of several variants in an Avro union can represent
+an Elm custom type, by using the [`union`](Avro-Codec#union) family
+of functions
+
+>  personOrPetCodec : Codec (Result Person Pet)
+>  personOrPetCodec =
+>      union personCodec petCodec
+
+Records, unions, named types, and basic types can be composed to easily
+represent complex models.
+
+-}
+
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections   #-}
 module Avro.Codec
-    ( Codec (..)
+    ( -- * Core Types
+      Codec (..)
     , invmap, emap
-    , unit, bool, int, int64, float, double, null, string, array, dict, enum, namedType
+    , withDocumentation, withAliases, withLogicalType
+
+    -- * Basic Builders
+    , unit, bool, int, int64, float, double, string, array, dict, enum, namedType
+
+    -- * Working with Record Types
     , StructCodec, StructBuilder
     , record
+
+    -- * Working with Union Types
     , maybe, union, union3, union4, union5
     , requiredField, optionalField, fallbackField
     , structField
@@ -30,6 +73,8 @@ import qualified Prelude
 import           Prelude hiding (maybe)
 
 
+{-| This type defines the schema, encoder, and decoder for a Haskell type.
+-}
 data Codec a =
   Codec {
       schema :: Schema
@@ -46,7 +91,21 @@ instance Invariant Codec where
       , writer = writer . g
       }
 
+{-| Partially map a Codec to a new type.
 
+Like `imap` this function requires a _from_ and _to_
+mapping to the new type, but this also allows one to fail to parse an
+unexpected value.
+
+For example, the Logical UUID Type is backed by an Avro string.
+As not all strings are valid UUIDs, this function would be used to
+print and parse the string.
+
+This function can be overused as if the mapping fails the user
+will receive a parse error from the binary decoder, and lose any
+specific information as to the nature of the error.
+
+-}
 emap :: (a -> Maybe b) -> (b -> a) -> Codec a -> Codec b
 emap f g Codec {..} =
   Codec
@@ -55,11 +114,30 @@ emap f g Codec {..} =
     , writer = writer . g
     }
 
+{-| Definition of a Struct Codec
 
+Usually one will work with this type alias
+directly, as the builder is most useful when
+contructing the final value.
+
+-}
 type StructCodec a =
   StructBuilder a a
 
 
+{-| Builder for a Struct Codec.
+
+The first type parameter `b` is the type we're mapping from when writing
+an Avro record, the second type parameter `a` is the type we're reading
+avro data into. When a builder is completely constructed, the types `a`
+and `b` will be for the same type, and can be turned into a `Codec a`
+using the `record` function.
+
+The technical term for a type like this is that `StructBuilder` is an
+applicative profunctor; it wraps a parser and a builder for lists of
+Avro fields (along with their Schemas).
+
+-}
 data StructBuilder b a =
   StructBuilder
     { structSchemas :: DList Field
@@ -116,6 +194,35 @@ instance Profunctor StructBuilder where
 (<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
 (<$$>) = fmap . fmap
 infixl 4 <$$>
+
+
+{-| Add documentation to a Codec.
+
+If the Schema does not support documentation (i.e, it's not a Record or Enum)
+this function has no effect.
+
+-}
+withDocumentation :: String -> Codec a -> Codec a
+withDocumentation docs codec =
+    codec { schema = Schema.withDocumentation docs (schema codec) }
+
+
+{-| Add aliases to a Codec.
+
+If the Schema does not support aliases (i.e, it's not a named type)
+this function has no effect.
+
+-}
+withAliases :: [TypeName] -> Codec a -> Codec a
+withAliases docs codec =
+    codec { schema = Schema.withAliases docs (schema codec) }
+
+
+{-| Add a logical type annotation to a Codec.
+-}
+withLogicalType :: String -> Codec a -> Codec a
+withLogicalType logicalType codec =
+    codec { schema = Schema.withLogicalType logicalType (schema codec) }
 
 
 
@@ -384,8 +491,8 @@ union left right =
 {-| A codec for a potentially missing value.
 
 If using this in a record, it may be best to use the
-[`optional`](Avro-Codec#optional) function instead, as that will
-apply this function as well as setting a default value.
+`optional` function instead, as that will apply this
+function as well as setting a default value.
 
 -}
 maybe :: Codec b -> Codec (Maybe b)

@@ -1,8 +1,19 @@
 {-# LANGUAGE RecordWildCards #-}
-module Avro
-    ( makeDecoder, makeEncoder
+{-| This module contains top level functions for converting Avro data to and from typed Haskell values.
 
-    , Environment (..), makeDecoderInEnvironment
+It is designed to be used with the Codec module.
+
+One should construct a Codec, then, use the functions below to read and write Avro encoded binary data.
+
+-}
+module Avro
+    (
+    -- * Parsing and writing Avro data
+    makeDecoder, makeEncoder,
+
+    -- * Working with named types
+    -- $environments
+    Environment (..), makeDecoderInEnvironment
     ) where
 
 import qualified Avro.Codec as Codec
@@ -26,13 +37,41 @@ makeDecoder :: Codec.Codec a -> Schema -> Either SchemaMismatch (Get a)
 makeDecoder =
     makeDecoderInEnvironment (Environment [] [])
 
+{-| Make a binary encoder for data using an Avro Codec
+-}
+makeEncoder :: Codec.Codec a -> a -> Put
+makeEncoder codec =
+    Bytes.encodeValue . Codec.writer codec
+
+
+-- $environments
+-- It is common when building Avro schemas traditionally to write small
+-- schemas for parts of a larger record or set of messages. To do this,
+-- one uses named types to create references so that schema definitions
+-- can be simplified and reused.
+--
+-- In this library, this can be quite simply done for Codecs by using the
+-- [`namedType`](Avro-Codec#namedType) function from the [`Codec`](Avro-Codec)
+-- module.
+--
+-- To read and write data which is separated in this manner, one should first
+-- construct an `Environment` for all named types used by the reader and
+-- writer. Then, use that environment when constructing a decoder.
+
+{-| Schemas which can be referred to by name in either the readers and writers.
+-}
 data Environment =
     Environment {
         readerEnvironment :: [Schema],
         writerEnvironment :: [Schema]
     }
 
+{-| Create a binary decoder for avro data given a Codec and the writer's Schema.
 
+This function will generate a decoder after considering the Named types in the
+defined set of schemas.
+
+-}
 makeDecoderInEnvironment :: Environment -> Codec.Codec a -> Schema -> Either SchemaMismatch (Get a)
 makeDecoderInEnvironment env Codec.Codec {..} writerSchema = do
     let
@@ -56,11 +95,4 @@ makeDecoderInEnvironment env Codec.Codec {..} writerSchema = do
             Just a ->
                 pure a
 
-
-
-{-| Make a binary encoder for data using an Avro Codec
--}
-makeEncoder :: Codec.Codec a -> a -> Put
-makeEncoder codec =
-    Bytes.encodeValue . Codec.writer codec
 

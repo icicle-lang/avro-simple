@@ -4,10 +4,14 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DoAndIfThenElse #-}
 module Avro.Schema
     ( Schema(..)
     , Field (..)
     , SortOrder(..)
+    , withDocumentation
+    , withAliases
+    , withLogicalType
     , typeName
     , SchemaMismatch(..)
 
@@ -20,9 +24,11 @@ import qualified Avro.Name as Name
 import           Avro.Name (TypeName (..))
 import qualified Avro.Value as Avro
 
-import           Control.Arrow (left)
-import           Control.Monad (void)
-import           Control.Monad.Trans.State (StateT (..))
+import           Control.Monad (when, unless)
+import           Control.Monad.Trans.Class (lift)
+import           Control.Monad.Trans.Except (ExceptT(..), throwE, runExceptT)
+import           Control.Monad.Trans.State (State)
+import qualified Control.Monad.Trans.State as StateT
 
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson
@@ -37,7 +43,7 @@ import qualified Data.HashMap.Lazy as KeyMap
 
 import           Data.Bifunctor (bimap)
 import qualified Data.ByteString as Strict
-import           Data.Foldable (asum)
+import           Data.Foldable (asum, traverse_, for_)
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified Data.Map as Map
@@ -146,8 +152,79 @@ typeName s =
         Record name _ _ _ ->
             name
 
-        Enum name _ _ _  _ ->
+        Enum name _ _ _ _ ->
             name
+
+
+
+{-| Add documentation to a Schema.
+
+If the Schema does not support documentation (i.e, it's not a Record or Enum)
+this function has no effect.
+
+-}
+withDocumentation :: String -> Schema -> Schema
+withDocumentation docs schema =
+    case schema of
+        Enum name aliases _ symbols enumDefault ->
+            Enum name aliases (Just docs) symbols enumDefault
+
+        Record name aliases _ fields ->
+            Record name aliases (Just docs) fields
+
+        _ ->
+            schema
+
+
+{-| Add aliases to a Schema.
+
+If the Schema does not support aliases (i.e, it's not a named type)
+this function has no effect.
+
+-}
+withAliases :: [TypeName] -> Schema -> Schema
+withAliases aliases schema =
+    case schema of
+        Enum name _ doc symbols enumDefault ->
+            Enum name aliases doc symbols enumDefault
+
+        Record name _ doc fields ->
+            Record name aliases doc fields
+
+        Fixed name _ size logical ->
+            Fixed name aliases size logical
+
+        _ ->
+            schema
+
+
+{-| Add a logical type to a Schema.
+
+If the Schema does not support a logical type, (e.g., it's a named type)
+this function has no effect.
+
+-}
+withLogicalType :: String -> Schema -> Schema
+withLogicalType logicalType schema =
+    case schema of
+        Int _ ->
+            Int (Just logicalType)
+
+        Long _ ->
+            Long (Just logicalType)
+
+        Bytes _ ->
+            Bytes (Just logicalType)
+
+        Fixed name doc size _ ->
+            Fixed name doc size (Just logicalType)
+
+        String _ ->
+            String (Just logicalType)
+
+        _ ->
+            schema
+
 
 
 data SchemaInvalid
@@ -191,92 +268,74 @@ your test suite applying this function to your Codec schemas.
 validateSchema :: Schema -> Either SchemaInvalid ()
 validateSchema top =
     let
-        go :: Bool -> Schema -> Set TypeName ->  Either SchemaInvalid ( (), Set TypeName )
-        go allowUnionsHere schema alreadyDefined =
+        go :: Bool -> Schema -> ExceptT SchemaInvalid (State (Set TypeName)) ()
+        go allowUnionsHere schema =
             case schema of
                 Union options ->
                     if allowUnionsHere then
-                        let
-                            firstDuplicate =
-                                findDuplicate (typeName <$> options)
-                        in
-                        case firstDuplicate of
+                        case findDuplicate (typeName <$> options) of
                             Nothing -> do
-                                ( _, fin ) <- traverseAccumL (go False) options alreadyDefined
-                                pure ( (), fin )
+                                traverse_ (go False) options
 
                             Just tn ->
-                                Left (SchemaIdenticalNamesInUnion tn)
+                                throwE (SchemaIdenticalNamesInUnion tn)
 
                     else
-                        Left SchemaNestedUnion
+                        throwE SchemaNestedUnion
 
                 Array items ->
-                    go True items alreadyDefined
+                    go True items
 
                 Map values ->
-                    go True values alreadyDefined
+                    go True values
 
                 Record name aliases _ fields -> do
-                    ( _, fin ) <- traverseAccumL (goField name) fields alreadyDefined
-                    ((), ) <$>
-                        validNames fin name aliases
+                    traverse_ (goField name) fields
+                    validNames name aliases
 
                 Enum name aliases _ symbols enumDefault -> do
+                    for_ (findDuplicate symbols) $ \x ->
+                        throwE (SchemaHasDuplicateEnumValue name x)
 
-                    case findDuplicate symbols of
-                        Just x ->
-                            Left (SchemaHasDuplicateEnumValue name x)
+                    for_ enumDefault $ \x ->
+                        unless (List.elem x symbols) $
+                            throwE (SchemaEnumDefaultNotFound name x)
 
-                        Nothing ->
-                            pure ()
-
-
-                    case enumDefault of
-                        Just x ->
-                            if List.elem x symbols then
-                                pure ()
-
-                            else
-                                Left (SchemaEnumDefaultNotFound name x)
-
-                        Nothing ->
-                            pure ()
-
-                    ((), ) <$>
-                        validNames alreadyDefined name aliases
+                    validNames name aliases
 
                 Fixed name aliases _ _ ->
-                    ((), ) <$>
-                        validNames alreadyDefined name aliases
+                    validNames name aliases
 
                 NamedType info -> do
-                    _ <- left (SchemaHasInvalidName info) $
-                        Name.validName info
-
-                    pure ( (), alreadyDefined )
+                    case Name.validName info of
+                        Left err ->
+                            throwE (SchemaHasInvalidName info err)
+                        Right _ ->
+                            pure ()
 
                 _ ->
-                    Right ( (), alreadyDefined )
+                    pure ()
 
-        validNames seen name aliases =
-            case findErr Name.validName (name : aliases) of
-                Just ( nm, err ) ->
-                    Left (SchemaHasInvalidName nm err)
+        validNames name aliases = do
+            seen <- lift StateT.get
 
-                Nothing ->
-                    if Set.member name seen then
-                        Left (SchemaRedefinedType name)
+            for_ (findErr Name.validName (name : aliases)) $
+                throwE . uncurry SchemaHasInvalidName
 
-                    else
-                        Right (Set.insert name seen)
+            when (Set.member name seen) $
+                throwE (SchemaRedefinedType name)
 
-        goField :: TypeName -> Field -> Set TypeName ->  Either SchemaInvalid ( (), Set TypeName )
-        goField nm fld seen = do
-            _ <- left (SchemaHasInvalidFieldName nm (fieldName fld)) $
-                Name.validName nm
+            lift (StateT.modify (Set.insert name))
 
-            go True (fieldType fld) seen
+        goField :: TypeName -> Field -> ExceptT SchemaInvalid (State (Set TypeName)) ()
+        goField nm fld = do
+            case Name.validName nm of
+                Left txt ->
+                    throwE $ SchemaHasInvalidFieldName nm (fieldName fld) txt
+                Right _ ->
+                    pure ()
+
+            go True (fieldType fld)
 
         findDuplicate :: Ord a => [a] -> Maybe a
         findDuplicate =
@@ -312,14 +371,8 @@ validateSchema top =
                             Nothing
             in
             step
-
-        traverseAccumL :: Monad m => (a -> s -> m (b, s)) -> [a] -> s ->  m ([b], s)
-        traverseAccumL f xs s =
-            runStateT (traverse (StateT . f) xs) s
-
     in
-    void $
-        go True top Set.empty
+    StateT.evalState (runExceptT $ go True top) Set.empty
 
 
 
@@ -335,16 +388,6 @@ While canonical form technically refers to a formatted JSON string
 with no whitespace between terms, this function only transforms a
 Schema value, and one should compose the following functions if the
 canonical form string is required.
-
-    import Avro
-    import Avro.Schema as Schema exposing (Schema)
-    import Json.Encode as Encode
-
-    renderCanonical : Schema -> String
-    renderCanonical s =
-        Schema.canonical s
-            |> Avro.schemaEncoder
-            |> Encode.encode 0
 
 -}
 canonicalise :: Schema -> Schema
