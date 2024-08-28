@@ -1,12 +1,9 @@
 {-# LANGUAGE QuasiQuotes, OverloadedStrings, TemplateHaskell #-}
 module Test.Avro.Resolutions.Basics  where
 
-import qualified Avro
 import           Avro.Codec (Codec)
 import qualified Avro.Codec as Codec
 
-import qualified Data.Binary.Get as Get
-import qualified Data.Binary.Put as Put
 import           Data.Text (Text)
 
 import           Hedgehog

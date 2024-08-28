@@ -1,12 +1,9 @@
 {-# LANGUAGE QuasiQuotes, OverloadedStrings, TemplateHaskell #-}
-module Test.Avro.Resolutions.Unions  where
+module Test.Avro.Resolutions.Unions where
 
-import qualified Avro
 import           Avro.Codec (Codec)
 import qualified Avro.Codec as Codec
 
-import qualified Data.Binary.Get as Get
-import qualified Data.Binary.Put as Put
 import           Data.Text (Text)
 
 import           Hedgehog
@@ -81,7 +78,6 @@ prop_person_compatibility_from_union :: Property
 prop_person_compatibility_from_union =
     withTests 1 . property $ do
         compatible (Codec.maybe version2) (Codec.maybe version1) (Just (Person "Francis" Nothing)) (Just (Person "Francis" Nothing))
-
 
 
 

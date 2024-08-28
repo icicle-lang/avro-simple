@@ -327,8 +327,8 @@ record name StructBuilder {..} =
                 _ ->
                     Nothing
 
-        writer v =
-            Value.Record (DList.toList (structWriter v))
+        writer =
+            Value.Record . DList.toList . structWriter
     in
     Codec schema decoder writer
 

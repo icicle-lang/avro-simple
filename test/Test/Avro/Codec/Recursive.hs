@@ -45,12 +45,12 @@ linkedList a =
         unpackList [] =
             Left ()
 
+        builder =
+            (,) <$> Codec.requiredField "head" a fst
+                <*> Codec.requiredField "tail" (packedCodec (Codec.namedType consCodec)) snd
+
         consCodec =
-              Codec.record (TypeName "cons" []) $ (,)
-          <$> Codec.requiredField "head" a fst
-          <*> Codec.requiredField "tail" (
-                  packedCodec (Codec.namedType consCodec)
-              ) snd
+              Codec.record (TypeName "cons" []) builder
 
         packedCodec consCodec' =
             invmap packList unpackList $
@@ -63,13 +63,12 @@ linkedList a =
           consCodec
 
 
-
 prop_recursive_linked_list :: Property
 prop_recursive_linked_list =
     withTests 100 . property $ do
         example <-
             forAll $
-                Gen.list (Range.linear 0 10) $
+                Gen.list (Range.linear 0 100) $
                 Gen.text (Range.linear 0 100) Gen.ascii
 
         trip (linkedList Codec.string) example

@@ -71,7 +71,6 @@ putZigZag64 =
     putVarInt . zig64
 
 
-
 getPrefixedBytes :: Get ByteString
 getPrefixedBytes = do
     len <- getZigZag32
@@ -194,9 +193,12 @@ makeDecoder env schema =
 
         ReadSchema.Record name fields defaults ->
             let
+                newEnv =
+                    insertEnvironment name runRecord env
+
                 runRecord =
                     Value.Record <$>
-                        getRecord (insertEnvironment name runRecord env) defaults fields
+                        getRecord newEnv defaults fields
             in
             runRecord
 
@@ -277,7 +279,6 @@ encodeValue value =
         Value.Bytes b -> do
             putZigZag32 (fromIntegral (ByteString.length b))
             Put.putByteString b
-
 
         Value.String s ->
             sizedString s

@@ -58,6 +58,7 @@ test-suite avro-simple-test
         Test.Avro.Schema.Validation
         Test.Avro.Resolutions.Base
         Test.Avro.Resolutions.Basics
+        Test.Avro.Resolutions.Unions
 
     build-depends:
         base >= 4.11 && < 5,
@@ -72,3 +73,29 @@ test-suite avro-simple-test
         hedgehog
 
     ghc-options: -Wall
+
+
+benchmark bench
+    type:
+        exitcode-stdio-1.0
+
+    hs-source-dirs:
+        benchmarks
+
+    default-language:
+        Haskell2010
+
+    main-is:
+        bench.hs
+
+    ghc-options:
+        -Wall -O2
+
+    build-depends:
+        base,
+        avro-simple,
+        binary,
+        cereal,
+        deepseq,
+        gauge,
+        text
