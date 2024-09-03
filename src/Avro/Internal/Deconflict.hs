@@ -10,6 +10,8 @@ import           Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
 import qualified Data.List as List
+import           Data.Primitive.Array (arrayFromList)
+
 import           Avro.Internal.ReadSchema (ReadSchema)
 import qualified Avro.Internal.ReadSchema as ReadSchema
 
@@ -262,15 +264,15 @@ deconflict environmentNames readSchema writerSchema =
                             case work of
                                 [] ->
                                     Right $
-                                        ReadSchema.Union (List.reverse acc)
+                                        ReadSchema.Union (arrayFromList $ List.reverse acc)
 
                                 w : ws ->
                                     resolveBranch w (\ ix dr -> step ws (( ix, dr ) : acc ))
                     in
                     step writerInfo []
 
-                singlular ->
-                    resolveBranch singlular (\ix a -> Right (ReadSchema.AsUnion ix a))
+                singular ->
+                    resolveBranch singular (\ix a -> Right (ReadSchema.AsUnion ix a))
 
 
 
@@ -299,7 +301,7 @@ deconflict environmentNames readSchema writerSchema =
                         lined =
                             traverse match writerSymbols
                     in
-                    ReadSchema.Enum readerName
+                    ReadSchema.Enum readerName . arrayFromList
                         <$> lined
 
                 _ ->

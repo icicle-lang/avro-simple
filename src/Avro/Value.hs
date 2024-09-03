@@ -31,4 +31,4 @@ data Value
     | Union Int Value
     | Fixed ByteString
     | Enum Int
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Show)

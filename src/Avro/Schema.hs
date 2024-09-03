@@ -78,7 +78,7 @@ data Field =
     , fieldType :: Schema
     , fieldDefault :: Maybe Avro.Value
     }
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Show)
 
 
 {-| An Avro Schema
@@ -99,7 +99,7 @@ data Schema
     | Enum TypeName [TypeName] (Maybe String) [Text] (Maybe Text)
     | Union [Schema]
     | Fixed TypeName [TypeName] Int (Maybe String)
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Show)
 
 {-| Get the TypeName for an Avro Schema
 
@@ -477,7 +477,7 @@ data SchemaMismatch
     | MissingSymbol Text
     | NamedTypeUnresolved TypeName
     | FixedWrongSize TypeName Int Int
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Show)
 
 
 

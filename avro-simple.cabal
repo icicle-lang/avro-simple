@@ -33,6 +33,7 @@ library
         bytestring,
         containers,
         invariant,
+        primitive,
         profunctors,
         scientific,
         text,
@@ -51,6 +52,7 @@ test-suite avro-simple-test
     main-is:          Main.hs
 
     other-modules:
+        Test.Avro.Binary
         Test.Avro.Codec.Basics
         Test.Avro.Codec.Compound
         Test.Avro.Codec.Recursive

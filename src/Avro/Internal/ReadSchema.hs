@@ -4,6 +4,7 @@ import Avro.Name (TypeName)
 import Avro.Value (Value)
 
 import Data.Map (Map)
+import Data.Primitive.Array (Array)
 import Data.Text (Text)
 
 
@@ -34,7 +35,7 @@ data ReadSchema
     | Map ReadSchema
     | NamedType TypeName
     | Record TypeName [ReadField] (Map Int Value)
-    | Enum TypeName [Int]
-    | Union [(Int, ReadSchema)]
+    | Enum TypeName (Array Int)
+    | Union (Array (Int, ReadSchema))
     | Fixed TypeName Int
     | AsUnion Int ReadSchema

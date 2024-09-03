@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 module Avro.Internal.Bytes (
       emptyEnvironment
@@ -25,7 +26,7 @@ import           Data.Int (Int32, Int64)
 import           Data.Foldable (traverse_)
 import           Data.Map (Map)
 import qualified Data.Map as Map
-import           Data.Maybe (listToMaybe)
+import qualified Data.Primitive.Array as Array
 import           Data.Text (Text)
 import qualified Data.Text.Encoding as Text
 
@@ -60,7 +61,6 @@ getZigZag64 =
         getVarInt
 
 
-
 putZigZag32 :: Int32 -> Put
 putZigZag32 =
     putVarInt . zig32
@@ -86,7 +86,7 @@ getPrefixedUtf8 =
 getRecord :: Environment -> Map Int Value -> [ReadField] -> Get [Value]
 getRecord env defaults fields =
     let
-        go todo acc  =
+        go todo !acc  =
             case todo of
                 f : fs -> do
                     v <- makeDecoder env (ReadSchema.fldType f)
@@ -104,7 +104,7 @@ getRecord env defaults fields =
 getBlocks :: (a -> b -> b) -> b -> Get a -> Get b
 getBlocks cons empty element =
     let
-        go state acc =
+        go state !acc =
             if state > 0 then do
                 e <- element
                 go ( state - 1 ) ( cons e acc )
@@ -115,10 +115,10 @@ getBlocks cons empty element =
                     pure acc
 
                 else if b < 0 then do
-                    _ <- getZigZag32
+                    void getZigZag32
                     go (negate b) acc
 
-                else do
+                else
                     go b acc
     in
     go 0 empty
@@ -186,10 +186,10 @@ makeDecoder env schema =
                 getBlocks (:) [] (makeDecoder env items)
 
         ReadSchema.Map values ->
-            Value.Map  <$>
-                getBlocks (uncurry Map.insert)
+            Value.Map <$>
+                getBlocks ($)
                     Map.empty
-                    ((,) <$> getPrefixedUtf8 <*> makeDecoder env values)
+                    (Map.insert <$> getPrefixedUtf8 <*> makeDecoder env values)
 
         ReadSchema.Record name fields defaults ->
             let
@@ -238,10 +238,12 @@ makeDecoder env schema =
                     fail "Could not recover type name"
 
 
-index :: Int -> [a] -> Maybe a
+index :: Int -> Array.Array a -> Maybe a
 index i xs =
-    listToMaybe $
-        Prelude.drop i xs
+    if i >= 0 && i < Array.sizeofArray xs then
+        Just $ Array.indexArray xs i
+    else
+        Nothing
 
 
 sizedString :: Text -> Put

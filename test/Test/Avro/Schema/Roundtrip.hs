@@ -66,8 +66,8 @@ prop_test_example_1 =
             Aeson.eitherDecodeStrict (Text.encodeUtf8 example1)
 
 
-numSchemas :: [Schema] -> [Schema]
-numSchemas =
+nubSchemas :: [Schema] -> [Schema]
+nubSchemas =
     List.nubBy ((==) `on` Schema.typeName)
 
 
@@ -81,11 +81,32 @@ fuzzBaseName =
     Gen.element [ "foo", "bar", "baz" ]
 
 
+fuzzSuits :: Gen [Text]
+fuzzSuits = do
+    shuffled <- Gen.shuffle [ "CLUBS", "HEARTS", "SPADES", "DIAMONDS" ]
+    num <- Gen.int (Range.linear 1 4)
+    pure (take num shuffled)
+
+
 fuzzName :: Gen TypeName
 fuzzName =
     TypeName
         <$> fuzzBaseName
         <*> Gen.list (Range.linear 0 10) fuzzBaseName
+
+
+flattenUnions :: [Schema] -> [Schema]
+flattenUnions =
+    let
+        unionOptions s =
+            case s of
+                Schema.Union options ->
+                    flattenUnions options
+
+                other ->
+                    [ other ]
+    in
+    List.concatMap unionOptions
 
 
 fuzzValue :: Schema -> Gen Avro.Value
@@ -110,11 +131,11 @@ fuzzValue schema =
             Avro.Double <$> Gen.double (Range.constant (-10) 10)
 
         Schema.Bytes _ ->
-            Gen.discard
+            Avro.Bytes <$> Gen.bytes (Range.linear 0 10)
 
         Schema.String _ ->
             Avro.String <$>
-                Gen.text (Range.constant (-10) 10) Gen.ascii
+                Gen.text (Range.linear 0 10) Gen.ascii
 
         Schema.Array sc ->
             Avro.Array <$>
@@ -146,8 +167,8 @@ fuzzValue schema =
             Avro.Union selection <$>
                 fuzzValue (scs !! selection)
 
-        Schema.Fixed {} ->
-            Gen.discard
+        Schema.Fixed _ _ size _  ->
+            Avro.Fixed <$> Gen.bytes (Range.constant size size)
 
 
 fuzzDefaultValue :: Schema -> Gen Avro.Value
@@ -185,6 +206,17 @@ fuzzSchema =
         , pure Schema.Double
         , Schema.Bytes
               <$> optional (pure <$> Gen.ascii)
+        , Schema.Enum
+              <$> fuzzName
+              <*> Gen.list (Range.linear 0 5) fuzzName
+              <*> optional (pure <$> Gen.ascii)
+              <*> fuzzSuits
+              <*> pure Nothing
+        , Schema.Fixed
+              <$> fuzzName
+              <*> Gen.list (Range.linear 0 5) fuzzName
+              <*> Gen.int (Range.linear 0 20)
+              <*> optional (pure <$> Gen.ascii)
         , Schema.String
               <$> optional (pure <$> Gen.ascii)
         ]
@@ -198,13 +230,13 @@ fuzzSchema =
               <*> Gen.list (Range.linear 0 5) fuzzName
               <*> optional (pure <$> Gen.ascii)
               <*> (nubFields <$> Gen.list (Range.linear 1 5) fuzzField)
-        , Schema.Union . numSchemas
+        , Schema.Union . nubSchemas . flattenUnions
               <$> Gen.list (Range.linear 1 5) fuzzSchema
         ]
 
 
-prop_round_trip :: Property
-prop_round_trip =
+prop_trip_schema_aeson :: Property
+prop_trip_schema_aeson =
     withTests 1000 . property $ do
         schema <- forAll fuzzSchema
         tripping
