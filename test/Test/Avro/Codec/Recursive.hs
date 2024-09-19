@@ -34,33 +34,30 @@ tripVersions reader writer example = do
 linkedList :: Codec a -> Codec [a]
 linkedList a =
     let
-        packList (Right (g, b)) =
+        packList (Just (g, b)) =
             g : b
 
-        packList (Left ())=
+        packList Nothing=
             []
 
         unpackList (g:b) =
-            Right (g, b)
+            Just (g, b)
 
         unpackList [] =
-            Left ()
+            Nothing
 
-        builder =
+        builder recur =
             (,) <$> Codec.requiredField "head" a fst
-                <*> Codec.requiredField "tail" (packedCodec (Codec.namedType consCodec)) snd
+                <*> Codec.requiredField "tail" (reconfigure recur) snd
 
         consCodec =
-              Codec.record (TypeName "cons" []) builder
+              Codec.recursiveRecord (TypeName "cons" []) builder
 
-        packedCodec consCodec' =
-            invmap packList unpackList $
-                Codec.union
-                    Codec.unit
-                    consCodec'
+        reconfigure =
+            invmap packList unpackList . Codec.maybe
 
     in
-    packedCodec
+    reconfigure
           consCodec
 
 
