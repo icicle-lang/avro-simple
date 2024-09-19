@@ -13,6 +13,7 @@ import           Avro.Name (TypeName(..))
 import qualified Data.Binary.Get as Get
 import qualified Data.Binary.Put as Put
 import           Data.Functor.Identity (Identity (..))
+import           Data.Int (Int64)
 
 
 trip :: (Eq a, Show a) => Codec a -> a -> PropertyT IO ()
@@ -72,6 +73,42 @@ prop_recursive_linked_list =
                 Gen.text (Range.linear 0 100) Gen.ascii
 
         trip (linkedList Codec.string) example
+
+
+data LinkedList a =
+    LinkedList {
+        long :: a,
+        rest :: Maybe (LinkedList a)
+    } deriving (Eq, Show)
+
+
+linkedLongs :: Codec (LinkedList Int64)
+linkedLongs =
+    Codec.recursiveRecord (TypeName "LinkedLongs" []) $ \rec ->
+        LinkedList
+            <$> Codec.requiredField "long" Codec.int64 long
+            <*> Codec.optionalField "rest" rec rest
+
+
+prop_custom_linked_list :: Property
+prop_custom_linked_list =
+    withTests 100 . property $ do
+        top <-
+            forAll $
+                Gen.int64 (Range.linear 0 10)
+
+        more <-
+            forAll $
+                Gen.list (Range.linear 0 100) $
+                Gen.int64 (Range.linear 0 10)
+
+        let
+            example =
+                LinkedList top
+                    $ foldr (\a b -> Just (LinkedList a b)) Nothing more
+
+
+        trip linkedLongs example
 
 
 tests :: IO Bool

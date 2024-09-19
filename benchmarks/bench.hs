@@ -75,10 +75,8 @@ main = do
             Avro.makeDecoder personCodec (Codec.schema personCodec)
 
     defaultMain
-        [ bgroup "Encoding Juglidrio"
-            [ bench "Read" $ whnf (Put.runPut . Avro.makeEncoder personCodec) juglidrio
-            ]
-        , bgroup "Decoding Juglidrio"
-            [ bench "Read" $ whnf (Get.runGet decoder) juglidrioEncoded
+        [ bgroup "Person Codec"
+            [ bench "Write" $ whnf (Put.runPut . Avro.makeEncoder personCodec) juglidrio
+            , bench "Read" $ whnf (Get.runGet decoder) juglidrioEncoded
             ]
         ]

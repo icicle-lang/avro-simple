@@ -53,6 +53,9 @@ module Avro.Codec
     , requiredField, optionalField, fallbackField
     , structField
     , dimap, lmap
+
+    -- * Working with Recursive Types
+    , recursiveRecord
     ) where
 
 import           Avro.Internal.DList (DList)
@@ -71,6 +74,7 @@ import           Data.Text (Text)
 
 import qualified Prelude
 import           Prelude hiding (maybe)
+import           Data.Function (fix)
 
 
 {-| This type defines the schema, encoder, and decoder for a Haskell type.
@@ -741,3 +745,19 @@ namedType input =
     , decoder = decoder input
     , writer = writer input
     }
+
+
+{-| Build a record type which may be recursive, by providing a `Codec`
+    which embeds the record as a NamedType in the Schema.
+
+    This function is purely a convenience, as laziness means that one
+    can pass a definition recursively themselves (just remember to use
+    namedType to the Schema stays finite and can be serialized).
+
+    One does _not_ need to use an environment when using this function,
+    as records add themselves to the environment when decoding.
+
+-}
+recursiveRecord :: TypeName -> (Codec a -> StructCodec a) -> Codec a
+recursiveRecord name builder =
+    fix (record name . builder . namedType)
