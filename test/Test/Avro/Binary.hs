@@ -23,7 +23,7 @@ fuzzSchemaAndValue = do
 
 prop_trip_binary_values :: Property
 prop_trip_binary_values =
-    withTests 1000 . withDiscards 1 . property $ do
+    withTests 1000 . property $ do
         (sc, example) <- forAll fuzzSchemaAndValue
         let
           dynamic =

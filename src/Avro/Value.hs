@@ -1,3 +1,14 @@
+{-| This module defines a representation of an Avro value.
+
+One usually doesn't need to use this module,
+as decoding straight to an Haskell domain type via a Codec
+is better in most situations.
+
+This type is exposed though as it can be used to build a
+render function for Avro values of arbitrary types, which
+could be useful for a monitoring tool.
+
+-}
 module Avro.Value (
     Value (..)
 ) where

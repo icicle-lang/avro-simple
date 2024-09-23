@@ -29,6 +29,7 @@ library
     build-depends:
         base >= 4.11 && < 5,
         aeson,
+        aeson-pretty,
         binary,
         bytestring,
         containers,
@@ -56,10 +57,12 @@ test-suite avro-simple-test
         Test.Avro.Codec.Basics
         Test.Avro.Codec.Compound
         Test.Avro.Codec.Recursive
+        Test.Avro.Schema.Canonical
         Test.Avro.Schema.Roundtrip
         Test.Avro.Schema.Validation
         Test.Avro.Resolutions.Base
         Test.Avro.Resolutions.Basics
+        Test.Avro.Resolutions.Enumerations
         Test.Avro.Resolutions.Unions
 
     build-depends:
@@ -67,12 +70,14 @@ test-suite avro-simple-test
         avro-simple,
         aeson,
         binary,
+        bytestring,
         containers,
         invariant,
         neat-interpolation,
         profunctors,
         text,
-        hedgehog
+        hedgehog,
+        hedgehog-corpus
 
     ghc-options: -Wall
 

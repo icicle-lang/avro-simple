@@ -21,7 +21,7 @@ would be represented as an Avro record
 
 
 Furthermore, one of several variants in an Avro union can represent
-an Elm custom type, by using the [`union`](Avro-Codec#union) family
+a Haskell sum type, by using the [`union`](Avro-Codec#union) family
 of functions
 
 >  personOrPetCodec : Codec (Result Person Pet)
@@ -47,12 +47,12 @@ module Avro.Codec
     -- * Working with Record Types
     , StructCodec, StructBuilder
     , record
-
-    -- * Working with Union Types
-    , maybe, union, union3, union4, union5
     , requiredField, optionalField, fallbackField
     , structField
     , dimap, lmap
+
+    -- * Working with Union Types
+    , maybe, union, union3, union4, union5
 
     -- * Working with Recursive Types
     , recursiveRecord
@@ -539,8 +539,8 @@ union5 a b c d e =
 This can be used with [`emap`](Avro-Codec#emap) to map to a custom type.
 
 -}
-enum :: TypeName -> [Text] -> Codec Int
-enum name symbols =
+enum :: TypeName -> [Text] -> Maybe Text -> Codec Int
+enum name symbols def =
     let
         schema =
             Schema.Enum
@@ -548,7 +548,7 @@ enum name symbols =
                 []
                 Nothing
                 symbols
-                Nothing
+                def
 
         parse v =
             case v of

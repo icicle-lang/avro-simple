@@ -2,6 +2,7 @@
 module Test.Avro.Schema.Roundtrip where
 
 import           Hedgehog
+import qualified Hedgehog.Corpus as Corpus
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
@@ -12,7 +13,6 @@ import qualified Avro.Schema as Schema
 import qualified Avro.Value as Avro
 import           Avro.Name (TypeName(..))
 
-import           Control.Applicative
 import qualified Data.Aeson as Aeson
 import           Data.Function (on)
 import qualified Data.List as List
@@ -78,7 +78,7 @@ nubFields  =
 
 fuzzBaseName :: Gen Text
 fuzzBaseName =
-    Gen.element [ "foo", "bar", "baz" ]
+    Gen.element Corpus.boats
 
 
 fuzzSuits :: Gen [Text]
@@ -92,7 +92,7 @@ fuzzName :: Gen TypeName
 fuzzName =
     TypeName
         <$> fuzzBaseName
-        <*> Gen.list (Range.linear 0 10) fuzzBaseName
+        <*> Gen.list (Range.linear 0 10) (Gen.element Corpus.waters)
 
 
 flattenUnions :: [Schema] -> [Schema]
@@ -186,7 +186,7 @@ fuzzField = do
     schema <- fuzzSchema
     Field
         <$> fuzzBaseName
-        <*> Gen.list (Range.linear 0 10) fuzzBaseName
+        <*> Gen.list (Range.linear 0 2) fuzzBaseName
         <*> pure Nothing
         <*> Gen.maybe (Gen.element [ Ascending, Descending, Ignore ])
         <*> pure schema
@@ -199,26 +199,26 @@ fuzzSchema =
         [ pure Schema.Null
         , pure Schema.Boolean
         , Schema.Int
-              <$> optional (pure <$> Gen.ascii)
+              <$> Gen.maybe (pure <$> Gen.ascii)
         , Schema.Long
-              <$> optional (pure <$> Gen.ascii)
+              <$> Gen.maybe (pure <$> Gen.ascii)
         , pure Schema.Float
         , pure Schema.Double
         , Schema.Bytes
-              <$> optional (pure <$> Gen.ascii)
+              <$> Gen.maybe (pure <$> Gen.ascii)
         , Schema.Enum
               <$> fuzzName
               <*> Gen.list (Range.linear 0 5) fuzzName
-              <*> optional (pure <$> Gen.ascii)
+              <*> Gen.maybe (pure <$> Gen.ascii)
               <*> fuzzSuits
               <*> pure Nothing
         , Schema.Fixed
               <$> fuzzName
               <*> Gen.list (Range.linear 0 5) fuzzName
               <*> Gen.int (Range.linear 0 20)
-              <*> optional (pure <$> Gen.ascii)
+              <*> Gen.maybe (pure <$> Gen.ascii)
         , Schema.String
-              <$> optional (pure <$> Gen.ascii)
+              <$> Gen.maybe (pure <$> Gen.ascii)
         ]
 
         [ Schema.Array
@@ -228,7 +228,7 @@ fuzzSchema =
         , Schema.Record
               <$> fuzzName
               <*> Gen.list (Range.linear 0 5) fuzzName
-              <*> optional (pure <$> Gen.ascii)
+              <*> Gen.maybe (pure <$> Gen.ascii)
               <*> (nubFields <$> Gen.list (Range.linear 1 5) fuzzField)
         , Schema.Union . nubSchemas . flattenUnions
               <$> Gen.list (Range.linear 1 5) fuzzSchema

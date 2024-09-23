@@ -1,5 +1,25 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-| Definitions and helpers for Avro Names.
+
+Record, Enum and Fixed types are _named_ types. Each has a full name that is composed of two parts;
+a name and a namespace. Equality of names is defined on the full name.
+
+A namespace is list of scoping names, encoded in the interface description language and Json specification
+language as a dot separated string, but here as a list.
+
+The empty string may also be used as a namespace to indicate the null namespace.
+Equality of names (including field names and enum symbols) as well as fullnames is case-sensitive.
+
+Record fields and enum symbols have names as well (but no namespace). Equality of fields and
+enum symbols is defined on the name of the field/symbol within its scope (the record/enum that
+defines it). Fields and enum symbols across scopes are never equal.
+
+The name portion of the full name of named types, record field names, and enum symbols must:
+
+  - start with [A-Za-z\_][A-Za-z_]
+  - subsequently contain only [A-Za-z0-9\_][A-Za-z0-9_]
+-}
 module Avro.Name
     ( TypeName (..)
     , contextualTypeName, canonicalName, renderFullName

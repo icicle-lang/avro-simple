@@ -9,7 +9,7 @@ import           Data.Text (Text)
 import           Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import           Data.Int (Int64, Int32)
+import           Data.Int (Int32)
 import           Avro.Name (TypeName(..))
 import           Test.Avro.Resolutions.Base (compatible)
 
@@ -34,36 +34,30 @@ version2 =
           <*> Codec.optionalField "age" Codec.int age
 
 
-largeNumber :: Int64
-largeNumber =
-    914793674309632
-
-
-
 prop_int_to_option_int :: Property
 prop_int_to_option_int =
-    withTests 1 . property $ do
+    property $ do
         example <- forAll $ Gen.integral (Range.linear minBound maxBound)
         compatible (Codec.maybe Codec.int) Codec.int (Just example) example
 
 
 prop_int_to_option_long :: Property
 prop_int_to_option_long =
-    withTests 1 . property $ do
+    property $ do
         example <- forAll $ Gen.integral (Range.linear minBound maxBound)
         compatible (Codec.maybe Codec.int64) Codec.int (Just (fromIntegral example)) example
 
 
 prop_int_long_on_left :: Property
 prop_int_long_on_left =
-    withTests 1 . property $ do
+    property $ do
         example <- forAll $ Gen.integral (Range.linear minBound maxBound)
         compatible (Codec.union Codec.int64 Codec.int) Codec.int (Right example) example
 
 
 prop_int_long_on_right :: Property
 prop_int_long_on_right =
-    withTests 1 . property $ do
+    property $ do
         example <- forAll $ Gen.integral (Range.linear minBound maxBound)
         compatible (Codec.union Codec.int Codec.int64) Codec.int (Left example) example
 

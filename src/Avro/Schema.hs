@@ -5,6 +5,10 @@
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DoAndIfThenElse #-}
+{- | This module defines core Avro Schema types and functions
+for working with them.
+
+-}
 module Avro.Schema
     ( Schema(..)
     , Field (..)
@@ -17,7 +21,9 @@ module Avro.Schema
 
     , SchemaInvalid (..)
     , validateSchema
+
     , canonicalise
+    , renderCanonical
     ) where
 
 import qualified Avro.Name as Name
@@ -32,6 +38,7 @@ import qualified Control.Monad.Trans.State as StateT
 
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson
+import qualified Data.Aeson.Encode.Pretty as Pretty
 
 #if MIN_VERSION_aeson(2,0,0)
 import qualified Data.Aeson.KeyMap as KeyMap
@@ -43,6 +50,7 @@ import qualified Data.HashMap.Lazy as KeyMap
 
 import           Data.Bifunctor (bimap)
 import qualified Data.ByteString as Strict
+import qualified Data.ByteString.Lazy as Lazy
 import           Data.Foldable (asum, traverse_, for_)
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
@@ -386,8 +394,9 @@ rendering.
 
 While canonical form technically refers to a formatted JSON string
 with no whitespace between terms, this function only transforms a
-Schema value, and one should compose the following functions if the
-canonical form string is required.
+Schema value. The function `renderCanonical` will apply this function
+and format the resulting schema using the correct field order and
+lack of whitespace.
 
 -}
 canonicalise :: Schema -> Schema
@@ -463,6 +472,40 @@ canonicalise schema =
 
         NamedType nm ->
             NamedType (Name.canonicalName nm)
+
+
+simpleRenderConfig :: Pretty.Config
+simpleRenderConfig =
+    Pretty.defConfig {
+        Pretty.confIndent = Pretty.Spaces 2,
+        Pretty.confCompare = Pretty.keyOrder [
+            "name",
+            "aliases",
+            "doc",
+            "type",
+            "logicalType",
+            "fields",
+            "symbols",
+            "order",
+            "default",
+            "items",
+            "values",
+            "size"
+        ]
+    }
+
+
+{-| Render the Canonical form of a Schema.
+-}
+renderCanonical :: Schema -> Lazy.ByteString
+renderCanonical =
+    let
+        config =
+            simpleRenderConfig {
+                Pretty.confIndent = Pretty.Spaces 0
+            }
+    in
+    Pretty.encodePretty' config . canonicalise
 
 
 
@@ -1125,6 +1168,7 @@ decodeFields context (Aeson.Object obj) = do
 decodeFields _ _ =
     fail "Can't parse Field object"
 
+
 decodeSchema :: Aeson.Value -> Aeson.Parser Schema
 decodeSchema =
     decodeSchemaInContext Nothing
@@ -1251,7 +1295,7 @@ decodeSchemaInContext context vs = case vs of
                             decodeAliases name obj
 
                         Enum name aliases
-                            <$> obj Aeson..: "doc"
+                            <$> obj Aeson..:? "doc"
                             <*> obj Aeson..: "symbols"
                             <*> obj Aeson..:? "default"
 
