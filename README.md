@@ -16,7 +16,7 @@ is not fancy.
 But it is:
 
 - Efficient,
-- Correct, and
+- Highly conformant, and
 - Easy to use.
 
 
@@ -62,3 +62,26 @@ decoder :: Schema -> Either SchemaMismatch (Get Person)
 decoder writerSchema =
     Avro.makeDecoder personCodec writerSchema
 ```
+
+
+Acknowledgements and Alternatives
+---------------------------------
+
+While this code is derived from our Elm library, we would like to thank Haskell Works for
+their [Avro library](https://github.com/haskell-works/avro), which inspires parts of the
+implementation and clarified a number of points. It is an alternative well worth considering
+for parsing Avro data in Haskell.
+
+The main differences between this library and that are:
+
+- Haskell Works' Avro library prefers type classes over values for encoders and decoders;
+- It favours code generation using Template Haskell over writing decoders and encoders; and
+- It doesn't have anything like our `Codec` type.
+
+You should consider our library if:
+
+- You are happy to write your own model types and codecs (which in turn generate schemas);
+- You want to dynamically generate Avro data of unknown shape in your program (types defined
+  by your users); or
+- You are happy with a smaller library with fewer features but greater test coverage and
+  excellent adherence to the Avro specification.
