@@ -97,7 +97,7 @@ instance Invariant Codec where
 
 {-| Partially map a Codec to a new type.
 
-Like `imap` this function requires a _from_ and _to_
+Like `invmap` this function requires a /from/ and /to/
 mapping to the new type, but this also allows one to fail to parse an
 unexpected value.
 
@@ -131,10 +131,10 @@ type StructCodec a =
 
 {-| Builder for a Struct Codec.
 
-The first type parameter `b` is the type we're mapping from when writing
-an Avro record, the second type parameter `a` is the type we're reading
-avro data into. When a builder is completely constructed, the types `a`
-and `b` will be for the same type, and can be turned into a `Codec a`
+The first type parameter @b@ is the type we're mapping from when writing
+an Avro record, the second type parameter @a@ is the type we're reading
+avro data into. When a builder is completely constructed, the types @a@
+and @b@ will be for the same type, and can be turned into a @Codec a@
 using the `record` function.
 
 The technical term for a type like this is that `StructBuilder` is an
@@ -345,7 +345,7 @@ As Avro unions can not be nested (i.e., they can not directly contain
 other unions) this function takes care to flatten unions passed in to
 it.
 
-Often it is useful to use the [`imap`](Avro-Codec#imap) function to
+Often it is useful to use the [`invmap`](Avro-Codec#invmap) function to
 turn this into a Custom Type.
 
 -}
@@ -494,9 +494,9 @@ union left right =
 
 {-| A codec for a potentially missing value.
 
-If using this in a record, it may be best to use the
-`optional` function instead, as that will apply this
-function as well as setting a default value.
+If using this for a field in a record, it may be best to use
+`optionalField` instead, as that will apply this function as
+well as setting a default value of "null" for the field.
 
 -}
 maybe :: Codec b -> Codec (Maybe b)
@@ -754,7 +754,7 @@ namedType input =
     can pass a definition recursively themselves (just remember to use
     namedType to the Schema stays finite and can be serialized).
 
-    One does _not_ need to use an environment when using this function,
+    One does /not/ need to use an environment when using this function,
     as records add themselves to the environment when decoding.
 
 -}

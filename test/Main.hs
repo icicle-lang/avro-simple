@@ -5,6 +5,7 @@ module Main (main) where
 import           Hedgehog.Main ( defaultMain )
 
 import qualified Test.Avro.Binary
+import qualified Test.Avro.Names
 import qualified Test.Avro.Codec.Basics
 import qualified Test.Avro.Codec.Compound
 import qualified Test.Avro.Codec.Recursive
@@ -19,6 +20,7 @@ main :: IO ()
 main =
     defaultMain [
         Test.Avro.Binary.tests,
+        Test.Avro.Names.tests,
         Test.Avro.Codec.Basics.tests,
         Test.Avro.Codec.Compound.tests,
         Test.Avro.Codec.Recursive.tests,

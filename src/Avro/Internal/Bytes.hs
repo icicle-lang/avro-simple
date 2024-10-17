@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns    #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 module Avro.Internal.Bytes (
       emptyEnvironment

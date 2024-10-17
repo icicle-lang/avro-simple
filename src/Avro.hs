@@ -51,7 +51,7 @@ makeEncoder codec =
 -- can be simplified and reused.
 --
 -- In this library, this can be quite simply done for Codecs by using the
--- [`namedType`](Avro-Codec#namedType) function from the [`Codec`](Avro-Codec)
+-- [`Codec.namedType`](Avro-Codec#namedType) function from the [`Codec`](Avro-Codec)
 -- module.
 --
 -- To read and write data which is separated in this manner, one should first

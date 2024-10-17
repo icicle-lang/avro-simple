@@ -85,3 +85,8 @@ You should consider our library if:
   by your users); or
 - You are happy with a smaller library with fewer features but greater test coverage and
   excellent adherence to the Avro specification.
+
+You should use Haskell works library for now if:
+
+- You need to use the single container objects
+- You want to generate your Haskell types from Avro schemas.

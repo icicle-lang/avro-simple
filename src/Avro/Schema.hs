@@ -1,10 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE PatternGuards #-}
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE PatternGuards     #-}
+{-# LANGUAGE CPP               #-}
+{-# LANGUAGE DoAndIfThenElse   #-}
 {- | This module defines core Avro Schema types and functions
 for working with them.
 
@@ -235,6 +235,9 @@ withLogicalType logicalType schema =
 
 
 
+{-| Errors from the `validateSchema` function, indicating why a
+schema is poorly defined.
+-}
 data SchemaInvalid
     = SchemaNestedUnion
     | SchemaIdenticalNamesInUnion TypeName
@@ -1148,8 +1151,8 @@ decodeAliases context obj = do
 
 
 
-decodeFields :: Maybe TypeName -> Aeson.Value -> Aeson.Parser Field
-decodeFields context (Aeson.Object obj) = do
+decodeField :: TypeName -> Aeson.Value -> Aeson.Parser Field
+decodeField context (Aeson.Object obj) = do
     fieldName <-
         Aeson.explicitParseField Aeson.parseJSON obj "name"
     fieldAliases <-
@@ -1159,14 +1162,19 @@ decodeFields context (Aeson.Object obj) = do
     fieldOrder <-
         Aeson.explicitParseFieldMaybe decodeSortOrder obj "order"
     fieldType <-
-        Aeson.explicitParseField (decodeSchemaInContext context) obj "type"
+        Aeson.explicitParseField (decodeSchemaInContext (Just context)) obj "type"
     fieldDefault <-
         Aeson.explicitParseFieldMaybe' (decodeDefaultValue fieldType) obj "default"
 
     pure Field {..}
 
-decodeFields _ _ =
+decodeField _ _ =
     fail "Can't parse Field object"
+
+
+decodeFields :: TypeName -> Aeson.Value -> Aeson.Parser [Field]
+decodeFields context =
+    fmap Boxed.toList . Aeson.withArray "fields" (traverse (decodeField context))
 
 
 decodeSchema :: Aeson.Value -> Aeson.Parser Schema
@@ -1276,7 +1284,7 @@ decodeSchemaInContext context vs = case vs of
 
                         Record name aliases
                             <$> obj Aeson..:? "doc"
-                            <*> Aeson.explicitParseField (Aeson.withArray "fields" (traverse (decodeFields context) . Boxed.toList)) obj "fields"
+                            <*> Aeson.explicitParseField (decodeFields name) obj "fields"
 
                     "fixed" -> do
                         name <-
@@ -1366,4 +1374,5 @@ decodeBytes bytes =
 encodeBytes :: Strict.ByteString -> Text
 encodeBytes =
     Text.pack . map (Char.chr . fromIntegral) . Strict.unpack
+
 

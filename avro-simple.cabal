@@ -54,6 +54,7 @@ test-suite avro-simple-test
 
     other-modules:
         Test.Avro.Binary
+        Test.Avro.Names
         Test.Avro.Codec.Basics
         Test.Avro.Codec.Compound
         Test.Avro.Codec.Recursive
