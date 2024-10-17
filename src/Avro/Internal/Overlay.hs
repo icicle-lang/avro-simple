@@ -31,7 +31,7 @@ extractBindings s =
         Enum names aliases _ _ _ ->
             selfBindings names aliases
 
-        Fixed names aliases _ _ ->
+        Fixed names aliases _ _ _ ->
             selfBindings names aliases
 
         Union options ->
@@ -80,7 +80,7 @@ overlays input supplements =
                 Enum name aliases _ _ _ ->
                     ( adjust name aliases s env, s )
 
-                Fixed name aliases _ _ ->
+                Fixed name aliases _ _ _ ->
                     ( adjust name aliases s env, s )
 
 

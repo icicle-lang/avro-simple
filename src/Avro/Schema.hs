@@ -106,7 +106,7 @@ data Schema
     | Record TypeName [TypeName] (Maybe String) [Field]
     | Enum TypeName [TypeName] (Maybe String) [Text] (Maybe Text)
     | Union [Schema]
-    | Fixed TypeName [TypeName] Int (Maybe String)
+    | Fixed TypeName [TypeName] (Maybe String) Int (Maybe String)
     deriving (Eq, Show)
 
 {-| Get the TypeName for an Avro Schema
@@ -154,7 +154,7 @@ typeName s =
         NamedType name ->
             name
 
-        Fixed name _ _ _ ->
+        Fixed name _ _ _ _ ->
             name
 
         Record name _ _ _ ->
@@ -199,8 +199,8 @@ withAliases aliases schema =
         Record name _ doc fields ->
             Record name aliases doc fields
 
-        Fixed name _ size logical ->
-            Fixed name aliases size logical
+        Fixed name _ doc size logical ->
+            Fixed name aliases doc size logical
 
         _ ->
             schema
@@ -224,8 +224,8 @@ withLogicalType logicalType schema =
         Bytes _ ->
             Bytes (Just logicalType)
 
-        Fixed name doc size _ ->
-            Fixed name doc size (Just logicalType)
+        Fixed name aliases doc size _ ->
+            Fixed name aliases doc size (Just logicalType)
 
         String _ ->
             String (Just logicalType)
@@ -314,7 +314,7 @@ validateSchema top =
 
                     validNames name aliases
 
-                Fixed name aliases _ _ ->
+                Fixed name aliases _ _ _ ->
                     validNames name aliases
 
                 NamedType info -> do
@@ -465,10 +465,11 @@ canonicalise schema =
         Union options ->
             Union (List.map canonicalise options)
 
-        Fixed name _ size _ ->
+        Fixed name _ _ size _ ->
             Fixed
                 (Name.canonicalName name)
                 []
+                Nothing
                 size
                 Nothing
 
@@ -987,7 +988,7 @@ encodeSchemaInContext context s =
                     <> required
                     <> encodeOptionals optionals
 
-        Fixed name aliases size logicalType ->
+        Fixed name aliases doc size logicalType ->
             let
                 nameParts =
                     encodeNameParts context name aliases
@@ -998,7 +999,8 @@ encodeSchemaInContext context s =
                     ]
 
                 optionals =
-                    [ ( "logicalType", fmap encodeString logicalType )
+                    [ ( "doc", fmap encodeString doc )
+                    , ( "logicalType", fmap encodeString logicalType )
                     ]
 
             in
@@ -1293,7 +1295,8 @@ decodeSchemaInContext context vs = case vs of
                             decodeAliases name obj
 
                         Fixed name aliases
-                            <$> obj Aeson..: "size"
+                            <$> obj Aeson..:? "doc"
+                            <*> obj Aeson..: "size"
                             <*> obj Aeson..:? "logicalType"
 
                     "enum" -> do

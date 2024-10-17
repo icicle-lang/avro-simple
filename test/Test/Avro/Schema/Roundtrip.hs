@@ -167,7 +167,7 @@ fuzzValue schema =
             Avro.Union selection <$>
                 fuzzValue (scs !! selection)
 
-        Schema.Fixed _ _ size _  ->
+        Schema.Fixed _ _ _ size _  ->
             Avro.Fixed <$> Gen.bytes (Range.constant size size)
 
 
@@ -215,6 +215,7 @@ fuzzSchema =
         , Schema.Fixed
               <$> fuzzName
               <*> Gen.list (Range.linear 0 5) fuzzName
+              <*> Gen.maybe (pure <$> Gen.ascii)
               <*> Gen.int (Range.linear 0 20)
               <*> Gen.maybe (pure <$> Gen.ascii)
         , Schema.String

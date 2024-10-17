@@ -93,6 +93,7 @@ namesExpected =
               Fixed
                 (TypeName "Simple" [ "explicit" ])
                 []
+                (Just "A simple name (attribute) and a namespace (attribute); the fullname is 'explicit.Simple' (this is a different type than of the 'inheritNull' field).")
                 12
                 Nothing
           }

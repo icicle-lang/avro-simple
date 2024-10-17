@@ -25,7 +25,7 @@ nameAndAliasesFor reader =
         Record name aliases _ _  ->
             Just (name, aliases)
 
-        Fixed name aliases _ _  ->
+        Fixed name aliases _ _ _  ->
             Just (name, aliases)
 
         _ ->
@@ -308,9 +308,9 @@ deconflict environmentNames readSchema writerSchema =
                     basicError
 
 
-        Fixed readerName readerAliases readerSize _ ->
+        Fixed readerName readerAliases _ readerSize _ ->
             case writerSchema of
-                Fixed writerName _ writerSize _  | Name.compatibleNames (readerName, readerAliases) writerName ->
+                Fixed writerName _ _ writerSize _  | Name.compatibleNames (readerName, readerAliases) writerName ->
                     if readerSize == writerSize then
                         Right $
                             ReadSchema.Fixed
